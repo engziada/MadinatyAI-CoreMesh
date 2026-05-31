@@ -1,0 +1,34 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "rootDir": ".",
+    "baseUrl": ".",
+    "sourceMap": true,
+    "declaration": false,
+    "moduleResolution": "node",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "importHelpers": false,
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@madinatyai/common": ["libs/common/src/index.ts"],
+      "@madinatyai/prisma": ["libs/prisma/src/index.ts"],
+      "@madinatyai/tenancy": ["libs/tenancy/src/index.ts"],
+      "@madinatyai/ai-router": ["libs/ai-router/src/index.ts"],
+      "@madinatyai/kyc": ["libs/kyc/src/index.ts"],
+      "@madinatyai/trust-score": ["libs/trust-score/src/index.ts"],
+      "@madinatyai/events": ["libs/events/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "tmp", "dist"]
+}

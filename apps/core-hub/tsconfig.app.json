@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "outDir": "../../dist",
+    "module": "commonjs",
+    "declaration": false,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "../../libs/**/*.ts"],
+  "exclude": [
+    "**/*.spec.ts",
+    "**/*.e2e-spec.ts",
+    "../../libs/**/*.spec.ts",
+    "../../libs/**/*.e2e-spec.ts",
+    "test/**"
+  ]
+}

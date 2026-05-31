@@ -1,0 +1,199 @@
+// ──────────────────────────────────────────────────────────────
+// MadinatyAI Ecosystem Hub — Prisma schema
+// Multi-tenant via SEPARATE PostgreSQL schemas (multiSchema).
+//   - "core"          : shared identity / reputation / ledger
+//   - "tenant_*"      : per-app isolated schemas (souq/kitchen/tutor/timebank)
+// pgvector enabled for semantic cross-matching embeddings.
+// Transparent Broker: NO financial/transaction models. Payment
+// handles live only as raw strings inside GlobalUser.metadata.
+// ──────────────────────────────────────────────────────────────
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema", "postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+  schemas    = ["core", "tenant_souq", "tenant_kitchen", "tenant_tutor", "tenant_timebank"]
+}
+
+// ─────────────── Enums (core schema) ───────────────
+
+enum Role {
+  USER
+  PROVIDER
+  TENANT_ADMIN
+  PLATFORM_ADMIN
+
+  @@schema("core")
+}
+
+enum TenantTier {
+  FREE
+  STANDARD
+  PREMIUM
+
+  @@schema("core")
+}
+
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@schema("core")
+}
+
+enum IncidentType {
+  FRAUD
+  SCAM
+  ABUSE
+  SPAM
+  IMPERSONATION
+  POLICY_VIOLATION
+  OTHER
+
+  @@schema("core")
+}
+
+// ─────────────── Core shared models ───────────────
+
+model GlobalUser {
+  id          String   @id @default(uuid())
+  phoneNumber String   @unique
+  isVerified  Boolean  @default(false)
+  trustScore  Int      @default(100)
+  role        Role     @default(USER)
+  // Raw payment handles (Instapay / Vodafone Cash) + arbitrary profile data.
+  // Stored as opaque metadata only — Transparent Broker policy.
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  kyc             KycRegistry?
+  semanticProfile SemanticProfile?
+  reportsMade     EcosystemSharedReport[] @relation("ReporterRelation")
+  reportsReceived EcosystemSharedReport[] @relation("OffenderRelation")
+
+  @@index([trustScore])
+  @@schema("core")
+}
+
+model Tenant {
+  id         String     @id @default(uuid())
+  // App subdomain, e.g. "souq", "kitchen", "tutor", "timebank".
+  subdomain  String     @unique
+  // Physical PostgreSQL schema pointer, e.g. "tenant_souq".
+  schemaName String     @unique
+  isActive   Boolean    @default(true)
+  tierLevel  TenantTier @default(FREE)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([isActive])
+  @@schema("core")
+}
+
+model KycRegistry {
+  id            String    @id @default(uuid())
+  userId        String    @unique
+  user          GlobalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Path/key to AES-256-GCM encrypted ID document (never the raw doc).
+  encryptedIdPath String
+  idNumber      String
+  status        KycStatus @default(PENDING)
+  reviewedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+  @@schema("core")
+}
+
+model EcosystemSharedReport {
+  id                  String       @id @default(uuid())
+  reporterId          String
+  offenderId          String
+  reporter            GlobalUser   @relation("ReporterRelation", fields: [reporterId], references: [id])
+  offender            GlobalUser   @relation("OffenderRelation", fields: [offenderId], references: [id])
+  incidentType        IncidentType
+  // 1 (minor) .. 5 (critical) — feeds the cross-platform TrustScore.
+  severity            Int          @default(1)
+  isPlatformWideBanned Boolean     @default(false)
+  // Subdomain where the incident originated (souq/kitchen/...).
+  originSubdomain     String?
+  createdAt           DateTime     @default(now())
+
+  @@index([offenderId])
+  @@index([incidentType])
+  @@schema("core")
+}
+
+// Global ledger populated by the cross-platform event system for analytics.
+model EcosystemCrossMatches {
+  id              String   @id @default(uuid())
+  userId          String?
+  sourceSubdomain String
+  eventType       String
+  payload         Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  @@index([sourceSubdomain])
+  @@index([eventType])
+  @@schema("core")
+}
+
+// Semantic embeddings for cross-platform matching (cloud-generated via Gemini).
+model SemanticProfile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      GlobalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 768-dim vector (pgvector). Read/written via raw SQL helpers.
+  embedding Unsupported("vector(768)")?
+  updatedAt DateTime @updatedAt
+
+  @@schema("core")
+}
+
+// ─────────────── Per-tenant placeholder models ───────────────
+// Minimal tables so each tenant schema physically exists and
+// isolation can be verified. Each ecosystem app extends its own schema later.
+
+model SouqListing {
+  id                String   @id @default(uuid())
+  ownerGlobalUserId String
+  title             String
+  createdAt         DateTime @default(now())
+
+  @@schema("tenant_souq")
+}
+
+model KitchenMenuItem {
+  id                String   @id @default(uuid())
+  ownerGlobalUserId String
+  title             String
+  createdAt         DateTime @default(now())
+
+  @@schema("tenant_kitchen")
+}
+
+model TutorBooking {
+  id                String   @id @default(uuid())
+  ownerGlobalUserId String
+  title             String
+  createdAt         DateTime @default(now())
+
+  @@schema("tenant_tutor")
+}
+
+model TimeBankOffer {
+  id                String   @id @default(uuid())
+  ownerGlobalUserId String
+  title             String
+  createdAt         DateTime @default(now())
+
+  @@schema("tenant_timebank")
+}

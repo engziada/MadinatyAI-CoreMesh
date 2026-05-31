@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: madinaty
+      POSTGRES_PASSWORD: madinaty
+      POSTGRES_DB: madinatyai
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U madinaty -d madinatyai']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollamadata:/root/.ollama
+    # Pull the model once the container is up:
+    #   docker compose exec ollama ollama pull llama3:8b
+
+  core-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      ROOT_DOMAIN: madinatyai.com
+      DATABASE_URL: postgresql://madinaty:madinaty@postgres:5432/madinatyai?schema=core
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3:8b
+      KYC_STORAGE_DRIVER: local
+      KYC_STORAGE_LOCAL_PATH: /app/storage/kyc
+      # Provide real secrets via an env file or orchestrator secrets:
+      KYC_ENCRYPTION_KEY: ${KYC_ENCRYPTION_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - '3000:3000'
+    volumes:
+      - kycdata:/app/storage/kyc
+    # Apply migrations then boot the API.
+    command: sh -c "npx prisma migrate deploy && node dist/apps/core-hub/src/main.js"
+
+volumes:
+  pgdata:
+  redisdata:
+  ollamadata:
+  kycdata:

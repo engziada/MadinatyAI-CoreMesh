@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "types": ["jest", "node"]
+  },
+  "include": [
+    "apps/**/*.spec.ts",
+    "apps/**/*.e2e-spec.ts",
+    "libs/**/*.spec.ts",
+    "apps/**/*.ts",
+    "libs/**/*.ts"
+  ]
+}
