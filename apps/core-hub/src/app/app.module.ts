@@ -7,6 +7,7 @@ import { AiRouterModule } from '@madinatyai/ai-router';
 import { KycModule } from '@madinatyai/kyc';
 import { TrustScoreModule } from '@madinatyai/trust-score';
 import { EventsModule } from '@madinatyai/events';
+import { TokensModule } from '@madinatyai/tokens';
 import { HealthController } from './health.controller';
 import { AiController } from '../modules/ai/ai.controller';
 import { UsersController } from '../modules/users/users.controller';
@@ -14,6 +15,7 @@ import { KycController } from '../modules/kyc/kyc.controller';
 import { ReportsController } from '../modules/reports/reports.controller';
 import { TenantController } from '../modules/tenant/tenant.controller';
 import { TenantItemsService } from '../modules/tenant/tenant-items.service';
+import { TokensController } from '../modules/tokens/tokens.controller';
 
 /**
  * Root module wiring the shared core (config, Prisma, tenancy) with the
@@ -34,6 +36,7 @@ import { TenantItemsService } from '../modules/tenant/tenant-items.service';
     KycModule,
     TrustScoreModule,
     EventsModule,
+    TokensModule,
   ],
   controllers: [
     HealthController,
@@ -42,6 +45,7 @@ import { TenantItemsService } from '../modules/tenant/tenant-items.service';
     KycController,
     ReportsController,
     TenantController,
+    TokensController,
   ],
   providers: [TenantItemsService],
 })

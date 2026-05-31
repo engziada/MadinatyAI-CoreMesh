@@ -75,6 +75,7 @@ model GlobalUser {
 
   kyc             KycRegistry?
   semanticProfile SemanticProfile?
+  tokenWallet     TokenWallet?
   reportsMade     EcosystemSharedReport[] @relation("ReporterRelation")
   reportsReceived EcosystemSharedReport[] @relation("OffenderRelation")
 
@@ -154,6 +155,70 @@ model SemanticProfile {
   // 768-dim vector (pgvector). Read/written via raw SQL helpers.
   embedding Unsupported("vector(768)")?
   updatedAt DateTime @updatedAt
+
+  @@schema("core")
+}
+
+// ─────────────── Token Wallet (core schema) ───────────────
+
+model TokenWallet {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             GlobalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  businessTokens   Int      @default(0)
+  individualTokens Int      @default(0)
+
+  allocations      TokenAllocation[]
+  transactions     TokenTransaction[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@schema("core")
+}
+
+model TokenAllocation {
+  id             String   @id @default(uuid())
+  walletId       String
+  wallet         TokenWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  activityType   String
+  tokenType      String   // "business" | "individual"
+  allocatedAmount Int     @default(0)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([walletId, activityType, tokenType])
+  @@schema("core")
+}
+
+model TokenTransaction {
+  id          String   @id @default(uuid())
+  walletId    String
+  wallet      TokenWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  activityType String
+  tokenType    String  // "business" | "individual"
+  amount       Int     // Positive = credit, negative = debit
+
+  description  String?
+  referenceId  String?
+
+  createdAt    DateTime @default(now())
+
+  @@index([walletId, createdAt])
+  @@schema("core")
+}
+
+model ActivityPricing {
+  id          String   @id @default(uuid())
+  activityType String  @unique
+  cost        Int
+  description String
+  isActive    Boolean @default(true)
+  updatedAt   DateTime @updatedAt
 
   @@schema("core")
 }

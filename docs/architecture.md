@@ -64,7 +64,8 @@ CoreMesh/
 │   ├── ai-router/                  # Hybrid AI routing: Ollama (LOW) / Gemini (HIGH)
 │   ├── kyc/                        # KYC engine: AES-256-GCM encrypt/decrypt, StorageProvider
 │   ├── trust-score/                # Pure TrustScore calculator + service
-│   └── events/                     # BullMQ-backed cross-platform event emitter
+│   ├── events/                     # BullMQ-backed cross-platform event emitter
+│   └── tokens/                     # Closed-loop token wallet + activity pricing
 │
 ├── prisma/
 │   └── schema.prisma               # Multi-schema Prisma definition (core + tenant_*)
@@ -86,6 +87,7 @@ All libs are importable via `@madinatyai/<lib>` aliases resolved by `tsc-alias`:
 @madinatyai/kyc         → libs/kyc/src
 @madinatyai/trust-score → libs/trust-score/src
 @madinatyai/events      → libs/events/src
+@madinatyai/tokens      → libs/tokens/src
 ```
 
 ---
@@ -206,6 +208,29 @@ BullMQ-backed cross-platform event emitter:
 - Processor persists to `EcosystemCrossMatches` ledger asynchronously
 - Decouples tenant request latency from event persistence
 
+### 6.5 Token Wallet (`@madinatyai/tokens`)
+
+Closed-loop credit system. Users pay cash offline; platform admins credit tokens. Tokens are spent across ecosystem activities at prices configured in the `ActivityPricing` table (admin-editable without code deploy).
+
+| Model | Purpose |
+|-------|---------|
+| `TokenWallet` | Per-user balances: `businessTokens` (SaaS tenants) + `individualTokens` (end users) |
+| `TokenAllocation` | User-managed budget dedicating tokens to specific activities |
+| `TokenTransaction` | Immutable ledger of every credit/debit for auditability |
+| `ActivityPricing` | Admin-configurable cost per activity type |
+
+**Key methods:**
+- `credit(userId, amount, tokenType, reason)` — admin credits tokens
+- `spend(userId, activityType, tokenType, referenceId?)` — deduct for activity (checks `ActivityPricing`)
+- `allocate(userId, activityType, tokenType, amount)` — user dedicates tokens to activity budget
+- `getWallet(userId)` — balance + allocations + recent transactions
+- `listActivityPricing()` / `setActivityPricing(...)` — admin pricing CRUD
+
+**Design decisions:**
+- Two token types: `business` (SaaS subscriptions) vs `individual` (end-user credits)
+- No expiry / no refunds in v1 (extensible later)
+- Cash collection stays outside the system — hub remains a Transparent Broker
+
 ---
 
 ## 7. API Endpoints
@@ -220,6 +245,12 @@ All routes are prefixed with `/api`.
 | POST | `/api/kyc` | KycController | — | Submit KYC document (base64) |
 | PATCH | `/api/kyc/:id/review` | KycController | — | Approve/reject KYC |
 | POST | `/api/reports` | ReportsController | — | Create cross-platform report |
+| POST | `/api/tokens/credit` | TokensController | PLATFORM_ADMIN | Credit tokens to user wallet |
+| POST | `/api/tokens/spend` | TokensController | — | Spend tokens on activity |
+| POST | `/api/tokens/allocate` | TokensController | — | Allocate tokens to activity budget |
+| GET | `/api/tokens/wallet` | TokensController | — | Get wallet balance + transactions |
+| GET | `/api/tokens/pricing` | TokensController | — | List activity pricing |
+| POST | `/api/tokens/pricing` | TokensController | PLATFORM_ADMIN | Set/update activity pricing |
 | GET | `/api/tenant/context` | TenantController | TenantGuard | Current tenant context |
 | POST | `/api/tenant/items` | TenantController | TenantGuard | Create tenant-scoped item |
 | GET | `/api/tenant/items` | TenantController | TenantGuard | List tenant-scoped items |
@@ -258,7 +289,7 @@ Dev mode uses `ts-node-dev --respawn --transpile-only` with `tsconfig-paths/regi
 | `jest.config.ts` | `*.spec.ts` | Unit tests |
 | `jest.e2e.config.ts` | `*.e2e-spec.ts` | End-to-end tests (run in band) |
 
-### 9.2 Unit Test Suites (7 suites, 25 tests)
+### 9.2 Unit Test Suites (9 suites, 40 tests)
 
 | Suite | File | Tests | What's Verified |
 |-------|------|-------|-----------------|
@@ -269,6 +300,8 @@ Dev mode uses `ts-node-dev --respawn --transpile-only` with `tsconfig-paths/regi
 | KycController | `apps/core-hub/src/modules/kyc/kyc.controller.spec.ts` | 3 | Submit (base64→Buffer), approve, reject |
 | ReportsController | `apps/core-hub/src/modules/reports/reports.controller.spec.ts` | 2 | Create report + trust recalculation, isPlatformWideBanned default |
 | TenantController | `apps/core-hub/src/modules/tenant/tenant.controller.spec.ts` | 3 | Context retrieval, create item, list items |
+| TokensService | `libs/tokens/src/tokens.service.spec.ts` | 8 | Credit, spend, allocate, insufficient tokens, invalid activity, empty wallet, list pricing, set pricing |
+| TokensController | `apps/core-hub/src/modules/tokens/tokens.controller.spec.ts` | 6 | Credit, spend, allocate, wallet, list pricing, set pricing endpoints |
 
 ### 9.3 E2E Test Suite (1 suite, 5 tests)
 
@@ -280,7 +313,7 @@ Dev mode uses `ts-node-dev --respawn --transpile-only` with `tsconfig-paths/regi
 
 | Check | Command | Result |
 |-------|---------|--------|
-| Unit tests | `npx jest --ci` | **7 suites, 25/25 passed** ✅ |
+| Unit tests | `npx jest --ci` | **9 suites, 40/40 passed** ✅ |
 | E2E tests | `npx jest --config jest.e2e.config.ts --runInBand --ci` | **1 suite, 5/5 passed** ✅ |
 | TypeScript build | `npx tsc -p apps/core-hub/tsconfig.app.json --noEmit` | **0 errors** ✅ |
 | ESLint | `npm run lint` | **0 errors, 0 warnings** ✅ |
@@ -312,3 +345,4 @@ Dev mode uses `ts-node-dev --respawn --transpile-only` with `tsconfig-paths/regi
 5. **Hybrid AI routing** — Cost optimization: free local inference for routine tasks, paid cloud inference only when semantic depth is needed.
 6. **StorageProvider interface for KYC** — Local volume for MVP, S3-compatible storage swappable without code changes.
 7. **tsc + tsc-alias over nest build** — Direct TypeScript compilation with alias resolution, avoiding Nest CLI abstraction layer.
+8. **DB-driven token pricing** — `ActivityPricing` table means admins can change costs without a code deploy. Closed-loop credits (not money) keep the Transparent Broker policy intact.
