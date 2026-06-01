@@ -1,7 +1,9 @@
 import { Body, Controller, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { AiRequestDto, AiRouterService } from '@madinatyai/ai-router';
 
 /** Exposes the hybrid AI router (local Ollama / cloud Gemini). */
+@ApiTags('AI')
 @Controller('ai')
 export class AiController {
   constructor(private readonly ai: AiRouterService) {}

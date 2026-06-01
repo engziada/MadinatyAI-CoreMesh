@@ -1,4 +1,6 @@
 import { Body, Controller, Logger, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { AuditAction } from '@madinatyai/gateway';
 import { PrismaService } from '@madinatyai/prisma';
 import { EventsService } from '@madinatyai/events';
 import { TrustScoreService } from '@madinatyai/trust-score';
@@ -10,6 +12,7 @@ import { CreateReportDto } from './dto/create-report.dto';
  *  2) emits a cross-platform event to the ledger (best-effort), and
  *  3) recalculates the offender's TrustScore.
  */
+@ApiTags('Reports')
 @Controller('reports')
 export class ReportsController {
   private readonly logger = new Logger(ReportsController.name);
@@ -21,6 +24,7 @@ export class ReportsController {
   ) {}
 
   @Post()
+  @AuditAction({ action: 'report.create', target: 'report' })
   async create(@Body() dto: CreateReportDto) {
     const report = await this.prisma.ecosystemSharedReport.create({
       data: {

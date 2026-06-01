@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { TenantContextService } from '@madinatyai/prisma';
 import { TenantGuard } from '@madinatyai/tenancy';
 import { TenantItemsService } from './tenant-items.service';
@@ -8,6 +9,7 @@ import { TenantItemsService } from './tenant-items.service';
  * tenant (subdomain / x-tenant-id). Data operations are isolated to the
  * active tenant's PostgreSQL schema.
  */
+@ApiTags('Tenant')
 @Controller('tenant')
 @UseGuards(TenantGuard)
 export class TenantController {

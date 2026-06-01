@@ -9,6 +9,8 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { AuditAction } from '@madinatyai/gateway';
 import { BusinessService } from '@madinatyai/business';
 import { TenantContextService } from '@madinatyai/prisma';
 import type {
@@ -22,6 +24,7 @@ import type {
  * The tenant is resolved from the request context; the business tenant type
  * is inferred from the subdomain (kitchen → KitchenBusiness, tutor → TutorBusiness).
  */
+@ApiTags('Business')
 @Controller('business')
 export class BusinessController {
   constructor(
@@ -38,6 +41,7 @@ export class BusinessController {
   }
 
   @Post()
+  @AuditAction({ action: 'business.create', target: 'business' })
   create(@Body() dto: CreateBusinessDto) {
     return this.business.createBusiness(this.getTenant(), dto);
   }
@@ -53,17 +57,20 @@ export class BusinessController {
   }
 
   @Patch(':id/branding')
+  @AuditAction({ action: 'business.updateBranding', target: 'business' })
   updateBranding(@Param('id') id: string, @Body() dto: UpdateBrandingDto) {
     return this.business.updateBranding(this.getTenant(), id, dto);
   }
 
   @Patch(':id/profile')
+  @AuditAction({ action: 'business.updateProfile', target: 'business' })
   updateProfile(@Param('id') id: string, @Body() dto: UpdateBusinessProfileDto) {
     return this.business.updateProfile(this.getTenant(), id, dto);
   }
 
   @Delete(':id')
   @HttpCode(204)
+  @AuditAction({ action: 'business.deactivate', target: 'business' })
   deactivate(@Param('id') id: string) {
     return this.business.deactivateBusiness(this.getTenant(), id);
   }

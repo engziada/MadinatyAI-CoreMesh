@@ -8,7 +8,7 @@ import {
   ExecutionContext,
   CallHandler,
 } from '@nestjs/common';
-import { Observable, tap } from 'rxjs';
+import { from, Observable, of, switchMap } from 'rxjs';
 import { IdempotencyStrategy } from './idempotency.strategy';
 import { InMemoryIdempotencyStrategy } from './in-memory-idempotency.strategy';
 import { IdempotencyKeyReusedError } from '../errors/gateway-exception';
@@ -36,34 +36,34 @@ export class IdempotencyInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // Check for existing record
-    return (async () => {
-      const existing = await this.strategy.get(key);
-      if (existing) {
-        // Replay the cached response
-        const response = context.switchToHttp().getResponse<{
-          status: (code: number) => void;
-          json: (body: unknown) => void;
-        }>();
-        response.status(existing.status);
-        response.json(existing.body);
-        // Return an empty observable — the response is already sent
-        return new Observable<never>((subscriber) => subscriber.complete());
-      }
+    // Check for existing record, then proceed or replay
+    return from(this.strategy.get(key)).pipe(
+      switchMap((existing) => {
+        if (existing) {
+          // Replay the cached response
+          const response = context.switchToHttp().getResponse<{
+            status: (code: number) => void;
+            json: (body: unknown) => void;
+          }>();
+          response.status(existing.status);
+          response.json(existing.body);
+          return of(undefined);
+        }
 
-      // No existing record — proceed and cache the result
-      return next.handle().pipe(
-        tap({
-          next: (data) => {
+        // No existing record — proceed and cache the result
+        return next.handle().pipe(
+          switchMap((data) => {
             const response = context.switchToHttp().getResponse<{ statusCode: number }>();
-            this.strategy.set(key, {
-              status: response.statusCode ?? 200,
-              body: data,
-              createdAt: Date.now(),
-            });
-          },
-        }),
-      );
-    })();
+            return from(
+              this.strategy.set(key, {
+                status: response.statusCode ?? 200,
+                body: data,
+                createdAt: Date.now(),
+              }),
+            ).pipe(switchMap(() => of(data)));
+          }),
+        );
+      }),
+    );
   }
 }
