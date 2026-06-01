@@ -19,8 +19,10 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
   const config = app.get(ConfigService);
 
-  // Gateway: /api/v1 prefix on every route
-  app.setGlobalPrefix('api/v1');
+  // Gateway: /api/v1 prefix on every route — exclude docs paths so they don't get envelope-wrapped
+  app.setGlobalPrefix('api/v1', {
+    exclude: ['docs', 'docs-json', 'docs-yaml', 'redoc', 'openapi.json'],
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
@@ -46,11 +48,22 @@ async function bootstrap(): Promise<void> {
       .addBearerAuth()
       .build();
     const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup('api/v1/docs', app, document, {
-      swaggerOptions: { urls: [{ url: 'api/v1/openapi.json', name: 'Hub API' }] },
+
+    // Serve raw JSON at /api/v1/openapi.json (Express middleware, before NestJS routing)
+    const jsonSpec = JSON.stringify(document);
+    app.use('/api/v1/openapi.json', (_req: unknown, res: { setHeader: (k: string, v: string) => void; send: (body: string) => void }) => {
+      res.setHeader('Content-Type', 'application/json');
+      res.send(jsonSpec);
     });
-    // ReDoc
-    app.use('api/v1/redoc', (_req: unknown, res: { send: (html: string) => void }) => {
+
+    // Swagger UI at /api/v1/docs — NestJS serves this
+    SwaggerModule.setup('api/v1/docs', app, document, {
+      swaggerOptions: { urls: [{ url: '/api/v1/openapi.json', name: 'Hub API' }] },
+    });
+
+    // ReDoc at /api/v1/redoc (Express middleware)
+    app.use('/api/v1/redoc', (_req: unknown, res: { setHeader: (k: string, v: string) => void; send: (html: string) => void }) => {
+      res.setHeader('Content-Type', 'text/html');
       res.send(`<!DOCTYPE html><html><head><title>Hub API Docs</title>
         <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
         <style>body{margin:0;padding:0;}</style></head>
