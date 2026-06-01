@@ -32,7 +32,8 @@
       "@madinatyai/business": ["libs/business/src/index.ts"],
       "@madinatyai/logging": ["libs/logging/src/index.ts"],
       "@madinatyai/logging/nest": ["libs/logging/src/nest/index.ts"],
-      "@madinatyai/logging/next": ["libs/logging/src/next/index.ts"]
+      "@madinatyai/logging/next": ["libs/logging/src/next/index.ts"],
+      "@madinatyai/gateway": ["libs/gateway/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp", "dist"]

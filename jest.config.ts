@@ -20,6 +20,7 @@ const config: Config = {
     '^@madinatyai/logging$': '<rootDir>/libs/logging/src/index.ts',
     '^@madinatyai/logging/nest$': '<rootDir>/libs/logging/src/nest/index.ts',
     '^@madinatyai/logging/next$': '<rootDir>/libs/logging/src/next/index.ts',
+    '^@madinatyai/gateway$': '<rootDir>/libs/gateway/src/index.ts',
   },
   transform: {
     '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json' }],
