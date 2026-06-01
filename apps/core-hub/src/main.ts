@@ -8,6 +8,9 @@ import {
   AllExceptionsFilter,
   ResponseEnvelopeInterceptor,
   AccessLogInterceptor,
+  AuditLogInterceptor,
+  RateLimitGuard,
+  IdempotencyInterceptor,
 } from '@madinatyai/gateway';
 import { LoggerService } from '@madinatyai/logging';
 import { AppModule } from './app/app.module';
@@ -28,11 +31,14 @@ async function bootstrap(): Promise<void> {
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
   );
 
-  // Gateway: global filter + interceptors (DI provides LoggerService, Reflector)
+  // Gateway: global filter + interceptors + guard (DI provides LoggerService, Reflector)
   app.useGlobalFilters(new AllExceptionsFilter());
+  app.useGlobalGuards(new RateLimitGuard(app.get(Reflector)));
   app.useGlobalInterceptors(
     new ResponseEnvelopeInterceptor(app.get(Reflector)),
     new AccessLogInterceptor(app.get(LoggerService)),
+    new AuditLogInterceptor(app.get(Reflector), app.get(LoggerService)),
+    new IdempotencyInterceptor(),
   );
 
   const origins = config.get<string[]>('corsOrigins') ?? ['http://localhost:3000'];

@@ -43,14 +43,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
     return from(this.strategy.get(key)).pipe(
       switchMap((existing) => {
         if (existing) {
-          // Replay the cached response
-          const response = context.switchToHttp().getResponse<{
-            status: (code: number) => void;
-            json: (body: unknown) => void;
-          }>();
-          response.status(existing.status);
-          response.json(existing.body);
-          return of(undefined);
+          // Replay: set status code and return cached body through the normal pipeline
+          const response = context.switchToHttp().getResponse<{ statusCode: number }>();
+          response.statusCode = existing.status;
+          return of(existing.body);
         }
 
         // No existing record — proceed and cache the result
