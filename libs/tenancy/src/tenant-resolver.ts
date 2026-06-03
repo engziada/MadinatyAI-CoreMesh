@@ -26,7 +26,7 @@ export function resolveSubdomainFromHost(
     // Not under the root domain (e.g. localhost) — no subdomain tenant.
     return null;
   }
-  const sub = cleanHost.slice(0, -1 * (`.${root}`).length);
+  const sub = cleanHost.slice(0, -1 * `.${root}`.length);
   // Only take the left-most label (souq.staging.madinatyai.com -> souq).
   const label = sub.split('.')[0];
   return label || null;

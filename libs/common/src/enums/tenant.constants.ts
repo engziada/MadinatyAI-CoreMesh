@@ -10,4 +10,5 @@ export const TENANT_SCHEMA_MAP: Readonly<Record<string, string>> = Object.freeze
   kitchen: 'tenant_kitchen',
   tutor: 'tenant_tutor',
   timebank: 'tenant_timebank',
+  kanto: 'tenant_soukelkanto',
 });

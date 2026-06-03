@@ -1,7 +1,13 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AuditAction } from '@madinatyai/gateway';
-import { TokensService, CreditTokensDto, SpendTokensDto, AllocateTokensDto, SetPricingDto } from '@madinatyai/tokens';
+import {
+  TokensService,
+  CreditTokensDto,
+  SpendTokensDto,
+  AllocateTokensDto,
+  SetPricingDto,
+} from '@madinatyai/tokens';
 
 /**
  * Token wallet controller. Provides endpoints for users to view their wallet,
@@ -49,6 +55,11 @@ export class TokensController {
   @Post('pricing')
   @AuditAction({ action: 'tokens.setPricing', target: 'pricing' })
   async setPricing(@Body() dto: SetPricingDto) {
-    return this.tokens.setActivityPricing(dto.activityType, dto.cost, dto.description, dto.isActive);
+    return this.tokens.setActivityPricing(
+      dto.activityType,
+      dto.cost,
+      dto.description,
+      dto.isActive,
+    );
   }
 }

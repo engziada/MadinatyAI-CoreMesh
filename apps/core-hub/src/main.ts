@@ -57,10 +57,16 @@ async function bootstrap(): Promise<void> {
 
     // Serve raw JSON at /api/v1/openapi.json (Express middleware, before NestJS routing)
     const jsonSpec = JSON.stringify(document);
-    app.use('/api/v1/openapi.json', (_req: unknown, res: { setHeader: (k: string, v: string) => void; send: (body: string) => void }) => {
-      res.setHeader('Content-Type', 'application/json');
-      res.send(jsonSpec);
-    });
+    app.use(
+      '/api/v1/openapi.json',
+      (
+        _req: unknown,
+        res: { setHeader: (k: string, v: string) => void; send: (body: string) => void },
+      ) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.send(jsonSpec);
+      },
+    );
 
     // Swagger UI at /api/v1/docs — NestJS serves this
     SwaggerModule.setup('api/v1/docs', app, document, {
@@ -68,15 +74,21 @@ async function bootstrap(): Promise<void> {
     });
 
     // ReDoc at /api/v1/redoc (Express middleware)
-    app.use('/api/v1/redoc', (_req: unknown, res: { setHeader: (k: string, v: string) => void; send: (html: string) => void }) => {
-      res.setHeader('Content-Type', 'text/html');
-      res.send(`<!DOCTYPE html><html><head><title>Hub API Docs</title>
+    app.use(
+      '/api/v1/redoc',
+      (
+        _req: unknown,
+        res: { setHeader: (k: string, v: string) => void; send: (html: string) => void },
+      ) => {
+        res.setHeader('Content-Type', 'text/html');
+        res.send(`<!DOCTYPE html><html><head><title>Hub API Docs</title>
         <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
         <style>body{margin:0;padding:0;}</style></head>
         <body><redoc spec-url='/api/v1/openapi.json'></redoc>
         <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
         </body></html>`);
-    });
+      },
+    );
   }
 
   const port = config.get<number>('port') ?? 3000;

@@ -44,9 +44,7 @@ export class TrustScoreService {
       where: { id: userId },
       data: { trustScore: result.score },
     });
-    this.logger.log(
-      `TrustScore for ${userId} = ${result.score} (banned=${result.isBanned})`,
-    );
+    this.logger.log(`TrustScore for ${userId} = ${result.score} (banned=${result.isBanned})`);
     return result;
   }
 }

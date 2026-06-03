@@ -18,16 +18,20 @@ describe('BusinessService', () => {
   };
 
   const prisma = {
-    withTenantSchema: jest.fn((_schema: string, callback: (tx: Record<string, unknown>) => Promise<unknown>) => {
-      const tx = {
-        kitchenBusiness: kitchenDelegate,
-        tutorBusiness: tutorDelegate,
-      };
-      return callback(tx);
-    }),
+    withTenantSchema: jest.fn(
+      (_schema: string, callback: (tx: Record<string, unknown>) => Promise<unknown>) => {
+        const tx = {
+          kitchenBusiness: kitchenDelegate,
+          tutorBusiness: tutorDelegate,
+        };
+        return callback(tx);
+      },
+    ),
   };
 
-  const service = new BusinessService(prisma as unknown as ConstructorParameters<typeof BusinessService>[0]);
+  const service = new BusinessService(
+    prisma as unknown as ConstructorParameters<typeof BusinessService>[0],
+  );
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -35,7 +39,11 @@ describe('BusinessService', () => {
 
   it('creates a kitchen business', async () => {
     kitchenDelegate.findUnique.mockResolvedValue(null);
-    kitchenDelegate.create.mockResolvedValue({ id: 'b-1', slug: 'ali-kitchen', name: 'Ali Kitchen' });
+    kitchenDelegate.create.mockResolvedValue({
+      id: 'b-1',
+      slug: 'ali-kitchen',
+      name: 'Ali Kitchen',
+    });
 
     const result = await service.createBusiness('kitchen', {
       ownerGlobalUserId: 'u-1',
@@ -63,7 +71,11 @@ describe('BusinessService', () => {
   });
 
   it('gets a kitchen business by slug', async () => {
-    kitchenDelegate.findUnique.mockResolvedValue({ id: 'b-1', slug: 'ali-kitchen', name: 'Ali Kitchen' });
+    kitchenDelegate.findUnique.mockResolvedValue({
+      id: 'b-1',
+      slug: 'ali-kitchen',
+      name: 'Ali Kitchen',
+    });
 
     const result = await service.getBusiness('kitchen', 'ali-kitchen');
 
@@ -73,7 +85,9 @@ describe('BusinessService', () => {
   it('throws BusinessNotFoundException for unknown slug', async () => {
     kitchenDelegate.findUnique.mockResolvedValue(null);
 
-    await expect(service.getBusiness('kitchen', 'unknown')).rejects.toBeInstanceOf(BusinessNotFoundException);
+    await expect(service.getBusiness('kitchen', 'unknown')).rejects.toBeInstanceOf(
+      BusinessNotFoundException,
+    );
   });
 
   it('lists kitchen businesses', async () => {
@@ -104,7 +118,11 @@ describe('BusinessService', () => {
   });
 
   it('updates kitchen business profile', async () => {
-    kitchenDelegate.update.mockResolvedValue({ id: 'b-1', name: 'Ali Updated', cuisineType: 'Asian' });
+    kitchenDelegate.update.mockResolvedValue({
+      id: 'b-1',
+      name: 'Ali Updated',
+      cuisineType: 'Asian',
+    });
 
     const result = await service.updateProfile('kitchen', 'b-1', {
       name: 'Ali Updated',
@@ -129,7 +147,12 @@ describe('BusinessService', () => {
 
   it('creates a tutor business with subjects', async () => {
     tutorDelegate.findUnique.mockResolvedValue(null);
-    tutorDelegate.create.mockResolvedValue({ id: 't-1', slug: 'ahmed-math', name: 'Ahmed Math', subjects: ['Math', 'Physics'] });
+    tutorDelegate.create.mockResolvedValue({
+      id: 't-1',
+      slug: 'ahmed-math',
+      name: 'Ahmed Math',
+      subjects: ['Math', 'Physics'],
+    });
 
     const result = await service.createBusiness('tutor', {
       ownerGlobalUserId: 'u-1',
@@ -154,8 +177,6 @@ describe('BusinessService', () => {
     const result = await service.listBusinesses('tutor', false);
 
     expect(result).toHaveLength(2);
-    expect(tutorDelegate.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: {} }),
-    );
+    expect(tutorDelegate.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
   });
 });

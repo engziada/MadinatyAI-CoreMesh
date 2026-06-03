@@ -31,7 +31,11 @@ describe('BusinessController', () => {
   it('creates a business', async () => {
     mockService.createBusiness.mockResolvedValue({ id: 'b-1', slug: 'ali-kitchen' });
 
-    const result = await controller.create({ ownerGlobalUserId: 'u-1', slug: 'ali-kitchen', name: 'Ali Kitchen' });
+    const result = await controller.create({
+      ownerGlobalUserId: 'u-1',
+      slug: 'ali-kitchen',
+      name: 'Ali Kitchen',
+    });
 
     expect(result.slug).toBe('ali-kitchen');
     expect(mockService.createBusiness).toHaveBeenCalledWith('kitchen', expect.any(Object));
@@ -54,9 +58,14 @@ describe('BusinessController', () => {
   });
 
   it('updates branding', async () => {
-    mockService.updateBranding.mockResolvedValue({ id: 'b-1', branding: { primaryColor: '#FF0000' } });
+    mockService.updateBranding.mockResolvedValue({
+      id: 'b-1',
+      branding: { primaryColor: '#FF0000' },
+    });
 
-    const result = await controller.updateBranding('b-1', { branding: { primaryColor: '#FF0000' } });
+    const result = await controller.updateBranding('b-1', {
+      branding: { primaryColor: '#FF0000' },
+    });
 
     expect(result.branding).toEqual({ primaryColor: '#FF0000' });
   });

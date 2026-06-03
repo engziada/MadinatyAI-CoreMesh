@@ -19,6 +19,7 @@ import { TenantController } from '../modules/tenant/tenant.controller';
 import { TenantItemsService } from '../modules/tenant/tenant-items.service';
 import { TokensController } from '../modules/tokens/tokens.controller';
 import { BusinessController } from '../modules/business/business.controller';
+import { SoukElKantoModule } from '../modules/soukelkanto/soukelkanto.module';
 
 /**
  * Root module wiring the shared core (config, Prisma, tenancy) with the
@@ -51,6 +52,7 @@ import { BusinessController } from '../modules/business/business.controller';
     EventsModule,
     TokensModule,
     BusinessModule,
+    SoukElKantoModule,
   ],
   controllers: [
     HealthController,

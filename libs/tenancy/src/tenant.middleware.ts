@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NestMiddleware } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NestMiddleware,
+} from '@nestjs/common';
 import { NextFunction, Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService, TenantContextService } from '@madinatyai/prisma';

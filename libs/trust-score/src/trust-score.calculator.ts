@@ -54,7 +54,10 @@ export function calculateTrustScore(input: TrustScoreInput): TrustScoreResult {
     0,
   );
 
-  const months = Math.max(0, Math.floor((now.getTime() - input.createdAt.getTime()) / MS_PER_MONTH));
+  const months = Math.max(
+    0,
+    Math.floor((now.getTime() - input.createdAt.getTime()) / MS_PER_MONTH),
+  );
   const ageBonus = Math.min(MAX_AGE_BONUS, months * AGE_BONUS_PER_MONTH);
 
   const raw = base - penalty + ageBonus;

@@ -3,12 +3,7 @@
  * { success: true, data, message?, meta: { correlationId, ts, pagination? } }.
  * Controllers should return raw data; this interceptor handles the wrapper.
  */
-import {
-  Injectable,
-  NestInterceptor,
-  ExecutionContext,
-  CallHandler,
-} from '@nestjs/common';
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
 import { Observable, map } from 'rxjs';
 import { Reflector } from '@nestjs/core';
 import { getCorrelationId } from '@madinatyai/logging';

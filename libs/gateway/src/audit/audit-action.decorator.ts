@@ -10,5 +10,4 @@ export interface AuditActionMetadata {
 }
 
 export const AUDIT_ACTION_KEY = 'audit_action';
-export const AuditAction = (meta: AuditActionMetadata) =>
-  SetMetadata(AUDIT_ACTION_KEY, meta);
+export const AuditAction = (meta: AuditActionMetadata) => SetMetadata(AUDIT_ACTION_KEY, meta);

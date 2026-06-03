@@ -38,7 +38,10 @@ const prismaMock = {
   controllers: [TenantController],
   providers: [
     { provide: PrismaService, useValue: prismaMock },
-    { provide: ConfigService, useValue: { get: (k: string) => (k === 'rootDomain' ? 'madinatyai.com' : undefined) } },
+    {
+      provide: ConfigService,
+      useValue: { get: (k: string) => (k === 'rootDomain' ? 'madinatyai.com' : undefined) },
+    },
     TenantContextService,
     TenantGuard,
     TenantItemsService,

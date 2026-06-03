@@ -4,7 +4,9 @@ import { TenantContextService } from '@madinatyai/prisma';
 
 describe('TenantController', () => {
   const tenantContext = {
-    getOrThrow: jest.fn().mockReturnValue({ id: 't-souq', subdomain: 'souq', schemaName: 'tenant_souq' }),
+    getOrThrow: jest
+      .fn()
+      .mockReturnValue({ id: 't-souq', subdomain: 'souq', schemaName: 'tenant_souq' }),
   };
   const itemsService = {
     create: jest.fn().mockResolvedValue({ id: 'item-1' }),

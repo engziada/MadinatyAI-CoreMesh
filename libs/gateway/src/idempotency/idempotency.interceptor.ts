@@ -21,9 +21,7 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH']);
 export class IdempotencyInterceptor implements NestInterceptor {
   private readonly strategy: IdempotencyStrategy;
 
-  constructor(
-    @Optional() @Inject('IDEMPOTENCY_STRATEGY') strategy?: IdempotencyStrategy,
-  ) {
+  constructor(@Optional() @Inject('IDEMPOTENCY_STRATEGY') strategy?: IdempotencyStrategy) {
     this.strategy = strategy ?? new InMemoryIdempotencyStrategy();
   }
 

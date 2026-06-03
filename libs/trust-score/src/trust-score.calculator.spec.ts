@@ -55,7 +55,10 @@ describe('calculateTrustScore', () => {
   });
 
   it('never drops below 0', () => {
-    const reports = Array.from({ length: 10 }, () => ({ severity: 5, isPlatformWideBanned: false }));
+    const reports = Array.from({ length: 10 }, () => ({
+      severity: 5,
+      isPlatformWideBanned: false,
+    }));
     const r = calculateTrustScore({ createdAt: now, reports, now });
     expect(r.score).toBe(0);
   });

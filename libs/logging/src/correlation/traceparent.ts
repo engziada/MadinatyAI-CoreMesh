@@ -66,7 +66,10 @@ export function resolveCorrelationId(headers: Record<string, string | undefined>
   const legacyId = headers['x-correlation-id'];
   if (legacyId) {
     // Embed the legacy ID into a synthetic traceparent for uniform shape
-    const traceId = legacyId.replace(/[^0-9a-f]/gi, '').padEnd(32, '0').slice(0, 32);
+    const traceId = legacyId
+      .replace(/[^0-9a-f]/gi, '')
+      .padEnd(32, '0')
+      .slice(0, 32);
     const parentId = randomHex(16);
     const flags = '01';
     const full = `00-${traceId}-${parentId}-${flags}`;
@@ -87,5 +90,7 @@ function randomHex(length: number): string {
       bytes[i] = Math.floor(Math.random() * 256);
     }
   }
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }

@@ -27,7 +27,10 @@ describe('BusinessMiddleware', () => {
     };
     mockAls.getStore.mockReturnValue(ctx);
 
-    const req = { headers: { 'x-business-slug': 'ali-kitchen' }, hostname: 'kitchen.madinatyai.com' } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const req = {
+      headers: { 'x-business-slug': 'ali-kitchen' },
+      hostname: 'kitchen.madinatyai.com',
+    } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
     middleware.use(req, mockRes, mockNext);
 

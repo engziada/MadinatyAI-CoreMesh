@@ -72,7 +72,9 @@ export function createPinoConfig(options: PinoConfigOptions): LoggerOptions {
           const levelName = pino.levels.labels[levelNum] ?? 'ERROR';
           const msg = obj.msg ?? '';
           const context = obj.service ?? '';
-          errStream.write(`[${new Date(ts).toISOString()}] [${levelName.toUpperCase()}] ${context} | ${msg}\n`);
+          errStream.write(
+            `[${new Date(ts).toISOString()}] [${levelName.toUpperCase()}] ${context} | ${msg}\n`,
+          );
         } catch {
           errStream.write(data + '\n');
         }
@@ -84,6 +86,6 @@ export function createPinoConfig(options: PinoConfigOptions): LoggerOptions {
   return {
     level: options.level as Level,
     defaultMeta: { service: options.service },
-    streams: streams.length > 0 ? multistream(streams) as unknown as MultiStreamRes : undefined,
+    streams: streams.length > 0 ? (multistream(streams) as unknown as MultiStreamRes) : undefined,
   } as LoggerOptions;
 }

@@ -64,7 +64,8 @@ describe('scrub', () => {
 
   // --- JWT regex ---
   it('should redact JWT-like strings with special marker', () => {
-    const jwtValue = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHi0vzQ';
+    const jwtValue =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHi0vzQ';
     const result = scrub({ token: jwtValue }) as Record<string, unknown>;
     expect(result.token).toBe(REDACTED_JWT);
   });
@@ -99,7 +100,10 @@ describe('scrub', () => {
 
   // --- Extra keys ---
   it('should scrub extra keys provided at call time', () => {
-    const result = scrub({ myCustomSecret: 'shh', safe: 'ok' }, ['myCustomSecret']) as Record<string, unknown>;
+    const result = scrub({ myCustomSecret: 'shh', safe: 'ok' }, ['myCustomSecret']) as Record<
+      string,
+      unknown
+    >;
     expect(result.myCustomSecret).toBe(REDACTED);
     expect(result.safe).toBe('ok');
   });

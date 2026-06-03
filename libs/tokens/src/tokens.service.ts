@@ -189,24 +189,37 @@ export class TokensService {
       userId: wallet.userId,
       businessTokens: wallet.businessTokens,
       individualTokens: wallet.individualTokens,
-      allocations: wallet.allocations.map((a: { activityType: string; tokenType: string; allocatedAmount: number }) => ({
-        activityType: a.activityType,
-        tokenType: a.tokenType,
-        allocatedAmount: a.allocatedAmount,
-      })),
-      recentTransactions: wallet.transactions.map((t: { activityType: string; tokenType: string; amount: number; description: string | null; referenceId: string | null; createdAt: Date }) => ({
-        activityType: t.activityType,
-        tokenType: t.tokenType,
-        amount: t.amount,
-        description: t.description,
-        referenceId: t.referenceId,
-        createdAt: t.createdAt,
-      })),
+      allocations: wallet.allocations.map(
+        (a: { activityType: string; tokenType: string; allocatedAmount: number }) => ({
+          activityType: a.activityType,
+          tokenType: a.tokenType,
+          allocatedAmount: a.allocatedAmount,
+        }),
+      ),
+      recentTransactions: wallet.transactions.map(
+        (t: {
+          activityType: string;
+          tokenType: string;
+          amount: number;
+          description: string | null;
+          referenceId: string | null;
+          createdAt: Date;
+        }) => ({
+          activityType: t.activityType,
+          tokenType: t.tokenType,
+          amount: t.amount,
+          description: t.description,
+          referenceId: t.referenceId,
+          createdAt: t.createdAt,
+        }),
+      ),
     };
   }
 
   /** List all active activity pricing entries. */
-  async listActivityPricing(): Promise<Array<{ activityType: string; cost: number; description: string }>> {
+  async listActivityPricing(): Promise<
+    Array<{ activityType: string; cost: number; description: string }>
+  > {
     const items = await this.prisma.activityPricing.findMany({
       where: { isActive: true },
       orderBy: { activityType: 'asc' },

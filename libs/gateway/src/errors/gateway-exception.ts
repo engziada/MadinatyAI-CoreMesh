@@ -122,7 +122,10 @@ export class TenantNotResolvedError extends GatewayException {
 /** 409 — Same idempotency key with different body. */
 export class IdempotencyKeyReusedError extends GatewayException {
   constructor(message?: string) {
-    super(ErrorCode.IDEMPOTENCY_KEY_REUSED, message ?? 'Idempotency key reused with different request');
+    super(
+      ErrorCode.IDEMPOTENCY_KEY_REUSED,
+      message ?? 'Idempotency key reused with different request',
+    );
   }
 }
 

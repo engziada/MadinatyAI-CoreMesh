@@ -22,15 +22,26 @@ describe('TokensService', () => {
     },
   };
 
-  const service = new TokensService(prisma as unknown as ConstructorParameters<typeof TokensService>[0]);
+  const service = new TokensService(
+    prisma as unknown as ConstructorParameters<typeof TokensService>[0],
+  );
 
   beforeEach(() => jest.clearAllMocks());
 
   it('credits tokens and returns updated wallet', async () => {
-    prisma.tokenWallet.upsert.mockResolvedValue({ id: 'w-1', userId: 'u-1', businessTokens: 50, individualTokens: 0 });
+    prisma.tokenWallet.upsert.mockResolvedValue({
+      id: 'w-1',
+      userId: 'u-1',
+      businessTokens: 50,
+      individualTokens: 0,
+    });
     prisma.tokenWallet.findUnique.mockResolvedValue({
-      id: 'w-1', userId: 'u-1', businessTokens: 50, individualTokens: 0,
-      allocations: [], transactions: [],
+      id: 'w-1',
+      userId: 'u-1',
+      businessTokens: 50,
+      individualTokens: 0,
+      allocations: [],
+      transactions: [],
     });
     prisma.tokenTransaction.create.mockResolvedValue({});
 
@@ -42,42 +53,88 @@ describe('TokensService', () => {
   });
 
   it('spends tokens with sufficient balance', async () => {
-    prisma.activityPricing.findUnique.mockResolvedValue({ activityType: 'kitchen_rental', cost: 10, isActive: true });
-    prisma.tokenWallet.findUnique.mockResolvedValue({ id: 'w-1', userId: 'u-1', businessTokens: 20, individualTokens: 0 });
-    prisma.tokenWallet.update.mockResolvedValue({ id: 'w-1', businessTokens: 10, individualTokens: 0 });
+    prisma.activityPricing.findUnique.mockResolvedValue({
+      activityType: 'kitchen_rental',
+      cost: 10,
+      isActive: true,
+    });
+    prisma.tokenWallet.findUnique.mockResolvedValue({
+      id: 'w-1',
+      userId: 'u-1',
+      businessTokens: 20,
+      individualTokens: 0,
+    });
+    prisma.tokenWallet.update.mockResolvedValue({
+      id: 'w-1',
+      businessTokens: 10,
+      individualTokens: 0,
+    });
     prisma.tokenTransaction.create.mockResolvedValue({});
     prisma.tokenWallet.findUnique.mockResolvedValue({
-      id: 'w-1', userId: 'u-1', businessTokens: 10, individualTokens: 0,
-      allocations: [], transactions: [],
+      id: 'w-1',
+      userId: 'u-1',
+      businessTokens: 10,
+      individualTokens: 0,
+      allocations: [],
+      transactions: [],
     });
 
     const result = await service.spend('u-1', 'kitchen_rental', 'business');
 
-    expect(prisma.tokenWallet.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { userId: 'u-1' },
-      data: { businessTokens: { decrement: 10 } },
-    }));
+    expect(prisma.tokenWallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 'u-1' },
+        data: { businessTokens: { decrement: 10 } },
+      }),
+    );
     expect(result.businessTokens).toBe(10);
   });
 
   it('throws InsufficientTokensException when balance is too low', async () => {
-    prisma.activityPricing.findUnique.mockResolvedValue({ activityType: 'kitchen_rental', cost: 10, isActive: true });
-    prisma.tokenWallet.findUnique.mockResolvedValue({ id: 'w-1', userId: 'u-1', businessTokens: 5, individualTokens: 0 });
+    prisma.activityPricing.findUnique.mockResolvedValue({
+      activityType: 'kitchen_rental',
+      cost: 10,
+      isActive: true,
+    });
+    prisma.tokenWallet.findUnique.mockResolvedValue({
+      id: 'w-1',
+      userId: 'u-1',
+      businessTokens: 5,
+      individualTokens: 0,
+    });
 
-    await expect(service.spend('u-1', 'kitchen_rental', 'business')).rejects.toBeInstanceOf(InsufficientTokensException);
+    await expect(service.spend('u-1', 'kitchen_rental', 'business')).rejects.toBeInstanceOf(
+      InsufficientTokensException,
+    );
   });
 
   it('throws InvalidActivityException when activity is not configured', async () => {
     prisma.activityPricing.findUnique.mockResolvedValue(null);
 
-    await expect(service.spend('u-1', 'unknown_activity', 'business')).rejects.toBeInstanceOf(InvalidActivityException);
+    await expect(service.spend('u-1', 'unknown_activity', 'business')).rejects.toBeInstanceOf(
+      InvalidActivityException,
+    );
   });
 
   it('allocates tokens to an activity', async () => {
-    prisma.tokenWallet.findUnique.mockResolvedValue({ id: 'w-1', userId: 'u-1', businessTokens: 100, individualTokens: 0 });
-    prisma.tokenAllocation.upsert.mockResolvedValue({ id: 'a-1', walletId: 'w-1', activityType: 'souk_ad', tokenType: 'business', allocatedAmount: 30 });
     prisma.tokenWallet.findUnique.mockResolvedValue({
-      id: 'w-1', userId: 'u-1', businessTokens: 100, individualTokens: 0,
+      id: 'w-1',
+      userId: 'u-1',
+      businessTokens: 100,
+      individualTokens: 0,
+    });
+    prisma.tokenAllocation.upsert.mockResolvedValue({
+      id: 'a-1',
+      walletId: 'w-1',
+      activityType: 'souk_ad',
+      tokenType: 'business',
+      allocatedAmount: 30,
+    });
+    prisma.tokenWallet.findUnique.mockResolvedValue({
+      id: 'w-1',
+      userId: 'u-1',
+      businessTokens: 100,
+      individualTokens: 0,
       allocations: [{ activityType: 'souk_ad', tokenType: 'business', allocatedAmount: 30 }],
       transactions: [],
     });
@@ -89,9 +146,16 @@ describe('TokensService', () => {
   });
 
   it('throws InsufficientTokensException when allocating more than balance', async () => {
-    prisma.tokenWallet.findUnique.mockResolvedValue({ id: 'w-1', userId: 'u-1', businessTokens: 10, individualTokens: 0 });
+    prisma.tokenWallet.findUnique.mockResolvedValue({
+      id: 'w-1',
+      userId: 'u-1',
+      businessTokens: 10,
+      individualTokens: 0,
+    });
 
-    await expect(service.allocate('u-1', 'souk_ad', 'business', 20)).rejects.toBeInstanceOf(InsufficientTokensException);
+    await expect(service.allocate('u-1', 'souk_ad', 'business', 20)).rejects.toBeInstanceOf(
+      InsufficientTokensException,
+    );
   });
 
   it('getWallet returns zero balances for new user', async () => {
@@ -112,11 +176,18 @@ describe('TokensService', () => {
 
     const result = await service.listActivityPricing();
 
-    expect(result).toEqual([{ activityType: 'kitchen_rental', cost: 50, description: 'Kitchen rental' }]);
+    expect(result).toEqual([
+      { activityType: 'kitchen_rental', cost: 50, description: 'Kitchen rental' },
+    ]);
   });
 
   it('sets activity pricing', async () => {
-    prisma.activityPricing.upsert.mockResolvedValue({ activityType: 'tutor_premium', cost: 15, description: 'Tutor premium', isActive: true });
+    prisma.activityPricing.upsert.mockResolvedValue({
+      activityType: 'tutor_premium',
+      cost: 15,
+      description: 'Tutor premium',
+      isActive: true,
+    });
 
     const result = await service.setActivityPricing('tutor_premium', 15, 'Tutor premium listing');
 

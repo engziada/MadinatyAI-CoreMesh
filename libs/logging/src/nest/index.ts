@@ -4,4 +4,10 @@
  */
 export { LoggingModule, LOGGING_CONFIG } from './logging.module';
 export { NestLoggerAdapter } from './nest-logger.adapter';
-export { LoggerService, type LoggingConfig, type AuditEvent, type SecurityEvent, type AccessEvent } from '../logger.service';
+export {
+  LoggerService,
+  type LoggingConfig,
+  type AuditEvent,
+  type SecurityEvent,
+  type AccessEvent,
+} from '../logger.service';

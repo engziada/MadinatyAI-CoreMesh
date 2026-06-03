@@ -11,6 +11,7 @@ const TENANTS = [
   { subdomain: 'kitchen', schemaName: 'tenant_kitchen', tierLevel: TenantTier.STANDARD },
   { subdomain: 'tutor', schemaName: 'tenant_tutor', tierLevel: TenantTier.FREE },
   { subdomain: 'timebank', schemaName: 'tenant_timebank', tierLevel: TenantTier.FREE },
+  { subdomain: 'kanto', schemaName: 'tenant_soukelkanto', tierLevel: TenantTier.STANDARD },
 ];
 
 async function main(): Promise<void> {
@@ -91,8 +92,36 @@ async function main(): Promise<void> {
     `);
   }
 
-  // eslint-disable-next-line no-console
-  console.log(`Seeded ${TENANTS.length} tenants + 1 sample user + 2 kitchen businesses + 2 tutor businesses.`);
+  // ── Safe Meet Spots (Souk ElKanto) ──
+  const safeSpots = [
+    { name: 'Madinaty Gate 1 - Visitor Lobby', nameAr: 'بوابة مدينتي 1 - بهو الزوار', district: 'GATE', latitude: 30.10861, longitude: 31.61639 },
+    { name: 'Madinaty Club Reception', nameAr: 'استقبال نادي مدينتي', district: 'CLUB', latitude: 30.10250, longitude: 31.62100 },
+    { name: 'Open Air Mall - Central Plaza', nameAr: 'أوبن إير مول - الميدان', district: 'MALL', latitude: 30.10550, longitude: 31.62800 },
+    { name: 'Craft Zone - Cafe Corner', nameAr: 'كرافت زون - ركن الكافيه', district: 'CRAFT', latitude: 30.10980, longitude: 31.63200 },
+    { name: 'District B5 Community Center', nameAr: 'مركز B5 المجتمعي', district: 'B5', latitude: 30.10700, longitude: 31.62500 },
+    { name: 'District C1 Mosque Courtyard', nameAr: 'ساحة مسجد C1', district: 'C1', latitude: 30.11000, longitude: 31.61800 },
+    { name: 'Sports Complex Entrance', nameAr: 'مدخل المجمع الرياضي', district: 'SPORTS', latitude: 30.10300, longitude: 31.63500 },
+    { name: 'Lake View Promenade', nameAr: 'كورنيش ليك فيو', district: 'LAKE', latitude: 30.10600, longitude: 31.63000 },
+    { name: 'Main Park North Gate', nameAr: 'بوابة الحديقة الرئيسية الشمالية', district: 'PARK', latitude: 30.11100, longitude: 31.62200 },
+    { name: 'Westside Shopping Strip', nameAr: 'شارع التسوق ويستسايد', district: 'WEST', latitude: 30.10400, longitude: 31.61500 },
+  ];
+
+  try {
+    for (const spot of safeSpots) {
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO tenant_soukelkanto."safe_meet_spots"
+          (id, name, "nameAr", district, latitude, longitude, "isActive", "createdAt")
+        VALUES
+          (gen_random_uuid(), '${spot.name}', '${spot.nameAr}', '${spot.district}', ${spot.latitude}, ${spot.longitude}, true, NOW())
+        ON CONFLICT DO NOTHING;
+      `);
+    }
+    // eslint-disable-next-line no-console
+    console.log(`Seeded ${TENANTS.length} tenants + 1 sample user + 2 kitchen businesses + 2 tutor businesses + ${safeSpots.length} safe meet spots.`);
+  } catch {
+    // eslint-disable-next-line no-console
+    console.log(`Seeded ${TENANTS.length} tenants + 1 sample user + 2 kitchen businesses + 2 tutor businesses (safe_meet_spots table missing — skipping).`);
+  }
 }
 
 main()

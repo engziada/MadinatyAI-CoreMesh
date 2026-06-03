@@ -9,11 +9,7 @@ import { withCorrelation, type CorrelationContext } from './correlation.context'
  * Create a correlation middleware for Express.
  * Resolves the correlation ID from incoming headers and stores it in AsyncLocalStorage.
  */
-export function correlationMiddleware(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): void {
+export function correlationMiddleware(req: Request, res: Response, next: NextFunction): void {
   const headers: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(req.headers)) {
     headers[key] = typeof value === 'string' ? value : undefined;

@@ -7,26 +7,51 @@
 /** Keys whose values must never appear in log output. */
 const DEFAULT_SCRUB_KEYS: ReadonlySet<string> = new Set([
   // Auth
-  'password', 'passwordhash', 'token', 'accesstoken', 'refreshtoken',
-  'jwt', 'bearer', 'authorization',
+  'password',
+  'passwordhash',
+  'token',
+  'accesstoken',
+  'refreshtoken',
+  'jwt',
+  'bearer',
+  'authorization',
   // API keys (Partner API — future-proof)
-  'apikey', 'apisecret', 'hmacsecret', 'keyhash', 'secrethash',
-  'x-api-key', 'x-api-signature',
+  'apikey',
+  'apisecret',
+  'hmacsecret',
+  'keyhash',
+  'secrethash',
+  'x-api-key',
+  'x-api-signature',
   // KYC
-  'nationalid', 'idnumber', 'kycpayload', 'encryptedid', 'idimage',
+  'nationalid',
+  'idnumber',
+  'kycpayload',
+  'encryptedid',
+  'idimage',
   // Financial / payment handles (broker stance)
-  'instapayhandle', 'vodafonecashnumber', 'bankaccount', 'iban', 'cardnumber',
-  'cvv', 'cardpan',
+  'instapayhandle',
+  'vodafonecashnumber',
+  'bankaccount',
+  'iban',
+  'cardnumber',
+  'cvv',
+  'cardpan',
   // PII (case-by-case)
-  'email', 'phone', 'phonenumber', 'address', 'gpslocation',
+  'email',
+  'phone',
+  'phonenumber',
+  'address',
+  'gpslocation',
   // Internal
-  'webhooksecret', 'admintoken', 'cookie', 'set-cookie',
+  'webhooksecret',
+  'admintoken',
+  'cookie',
+  'set-cookie',
 ]);
 
 /** Fields that must NEVER be scrubbed — essential for tracing. */
-const NEVER_SCRUB_KEYS: ReadonlySet<string> = new Set([
-  'userid', 'tenantid', 'partnerid',
-]);
+const NEVER_SCRUB_KEYS: ReadonlySet<string> = new Set(['userid', 'tenantid', 'partnerid']);
 
 /** Regex for values that look like JWTs. */
 const JWT_REGEX = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
@@ -111,10 +136,4 @@ export function scrub(
   return result;
 }
 
-export {
-  DEFAULT_SCRUB_KEYS,
-  NEVER_SCRUB_KEYS,
-  JWT_REGEX,
-  REDACTED,
-  REDACTED_JWT,
-};
+export { DEFAULT_SCRUB_KEYS, NEVER_SCRUB_KEYS, JWT_REGEX, REDACTED, REDACTED_JWT };

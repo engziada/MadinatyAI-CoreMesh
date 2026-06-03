@@ -15,7 +15,8 @@ type BusinessTenant = keyof typeof BUSINESS_SCHEMAS;
 // so we cast through `any` for dynamic model access.
 type Delegate = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-function getDelegate(tx: any, table: string): Delegate { // eslint-disable-line @typescript-eslint/no-explicit-any
+function getDelegate(tx: any, table: string): Delegate {
+  // eslint-disable-line @typescript-eslint/no-explicit-any
   return tx[table];
 }
 
@@ -72,10 +73,7 @@ export class BusinessService {
   }
 
   /** Get a business by its slug. */
-  async getBusiness(
-    tenant: BusinessTenant,
-    slug: string,
-  ): Promise<Record<string, unknown>> {
+  async getBusiness(tenant: BusinessTenant, slug: string): Promise<Record<string, unknown>> {
     const config = BUSINESS_SCHEMAS[tenant];
     if (!config) throw new Error(`Tenant ${tenant} does not support business sub-tenancy`);
 
