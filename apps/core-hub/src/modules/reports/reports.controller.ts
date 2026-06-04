@@ -1,10 +1,8 @@
-import { Body, Controller, Logger, Post } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuditAction } from '@madinatyai/gateway';
-import { PrismaService } from '@madinatyai/prisma';
-import { EventsService } from '@madinatyai/events';
-import { TrustScoreService } from '@madinatyai/trust-score';
 import { CreateReportDto } from './dto/create-report.dto';
+import { ReportsService } from './reports.service';
 
 /**
  * Cross-platform reporting endpoint. Filing a report:
@@ -13,43 +11,21 @@ import { CreateReportDto } from './dto/create-report.dto';
  *  3) recalculates the offender's TrustScore.
  */
 @ApiTags('Reports')
+@ApiBearerAuth()
 @Controller('reports')
 export class ReportsController {
-  private readonly logger = new Logger(ReportsController.name);
-
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly events: EventsService,
-    private readonly trust: TrustScoreService,
-  ) {}
+  constructor(private readonly reports: ReportsService) {}
 
   @Post()
   @AuditAction({ action: 'report.create', target: 'report' })
   async create(@Body() dto: CreateReportDto) {
-    const report = await this.prisma.ecosystemSharedReport.create({
-      data: {
-        reporterId: dto.reporterId,
-        offenderId: dto.offenderId,
-        incidentType: dto.incidentType,
-        severity: dto.severity,
-        isPlatformWideBanned: dto.isPlatformWideBanned ?? false,
-        originSubdomain: dto.originSubdomain ?? null,
-      },
+    return this.reports.file({
+      reporterId: dto.reporterId,
+      offenderId: dto.offenderId,
+      incidentType: dto.incidentType,
+      severity: dto.severity,
+      isPlatformWideBanned: dto.isPlatformWideBanned,
+      originSubdomain: dto.originSubdomain,
     });
-
-    // Best-effort ledger emission; never block the core flow on the queue.
-    try {
-      await this.events.emit({
-        sourceSubdomain: dto.originSubdomain ?? 'core',
-        eventType: 'user.reported',
-        userId: dto.offenderId,
-        payload: { severity: dto.severity, incidentType: dto.incidentType },
-      });
-    } catch (err) {
-      this.logger.warn(`Event emit failed (continuing): ${(err as Error).message}`);
-    }
-
-    const trust = await this.trust.recalculate(dto.offenderId);
-    return { report, trust };
   }
 }

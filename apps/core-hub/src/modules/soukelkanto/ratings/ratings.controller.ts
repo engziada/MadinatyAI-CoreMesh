@@ -1,11 +1,14 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuditAction } from '@madinatyai/gateway';
 import { TenantGuard } from '@madinatyai/tenancy';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/types/authenticated-user';
 import { SoukElKantoService } from '../soukelkanto.service';
 import { CreateRatingDto } from '../dto/create-rating.dto';
 
 @ApiTags('Souk ElKanto — Ratings')
+@ApiBearerAuth()
 @Controller('ratings')
 @UseGuards(TenantGuard)
 export class RatingsController {
@@ -13,8 +16,7 @@ export class RatingsController {
 
   @Post()
   @AuditAction({ action: 'souk.rating.create', target: 'rating' })
-  create(@Body() dto: CreateRatingDto) {
-    const raterId = 'demo-user';
-    return this.souk.createRating(raterId, dto);
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateRatingDto) {
+    return this.souk.createRating(user.id, dto);
   }
 }

@@ -3,7 +3,10 @@ import { PrismaModule } from '@madinatyai/prisma';
 import { AiRouterModule } from '@madinatyai/ai-router';
 import { TokensModule } from '@madinatyai/tokens';
 import { EventsModule } from '@madinatyai/events';
+import { ReportsModule } from '../reports/reports.module';
 import { SoukElKantoService } from './soukelkanto.service';
+import { R2StorageService } from './storage/r2-storage.service';
+import { SoukAiSuggestService } from './ai/ai-suggest.service';
 import { ListingsController } from './listings/listings.controller';
 import { OffersController } from './offers/offers.controller';
 import { HandoverController } from './handover/handover.controller';
@@ -12,15 +15,17 @@ import { FavoritesController } from './favorites/favorites.controller';
 import { CategoriesController } from './categories/categories.controller';
 import { SafeSpotsController } from './safe-spots/safe-spots.controller';
 import { HealthController } from './health/health.controller';
+import { SoukAiSuggestionsController } from './ai/ai-suggestions.controller';
 
 /**
  * Souk ElKanto tenant module — peer-to-peer second-hand marketplace.
  * Provides listings, offers, handover, ratings, favorites, categories,
- * and safe meet spots under the `tenant_soukelkanto` schema.
+ * safe meet spots, and AI suggestion endpoints under the
+ * `tenant_soukelkanto` schema.
  */
 @Module({
-  imports: [PrismaModule, AiRouterModule, TokensModule, EventsModule],
-  providers: [SoukElKantoService],
+  imports: [PrismaModule, AiRouterModule, TokensModule, EventsModule, ReportsModule],
+  providers: [SoukElKantoService, R2StorageService, SoukAiSuggestService],
   controllers: [
     ListingsController,
     OffersController,
@@ -30,6 +35,7 @@ import { HealthController } from './health/health.controller';
     CategoriesController,
     SafeSpotsController,
     HealthController,
+    SoukAiSuggestionsController,
   ],
 })
 export class SoukElKantoModule {}

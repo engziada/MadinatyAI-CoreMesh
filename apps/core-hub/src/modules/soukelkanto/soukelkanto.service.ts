@@ -1,8 +1,13 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { IncidentType } from '@prisma/client';
 import { PrismaService } from '@madinatyai/prisma';
 import { EventsService } from '@madinatyai/events';
 import { TokensService } from '@madinatyai/tokens';
+import { ReportsService } from '../reports/reports.service';
+import { R2StorageService } from './storage/r2-storage.service';
 import { SoukCategory, SoukCondition } from './dto/create-listing.dto';
+import type { PhotoUploadUrlResponse } from './dto/photo-upload.dto';
 
 export enum SoukListingStatus {
   ACTIVE = 'ACTIVE',
@@ -39,6 +44,9 @@ export class SoukElKantoService {
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
     private readonly tokens: TokensService,
+    private readonly config: ConfigService,
+    private readonly reports: ReportsService,
+    private readonly storage: R2StorageService,
   ) {}
 
   // ─────────────── Listings ───────────────
@@ -55,6 +63,20 @@ export class SoukElKantoService {
       photos?: Array<{ r2Key: string; position: number }>;
     },
   ) {
+    // Trust gate: users at or below the ban threshold cannot list.
+    // CLAUDE.md keeps TrustScore INTERNAL — surface only as a 403 here.
+    const threshold = this.config.get<number>('trustScore.banThreshold') ?? 20;
+    const seller = await this.prisma.globalUser.findUnique({
+      where: { id: sellerId },
+      select: { trustScore: true },
+    });
+    if (!seller) {
+      throw new NotFoundException(`Seller ${sellerId} not found`);
+    }
+    if (seller.trustScore <= threshold) {
+      throw new ForbiddenException('INSUFFICIENT_TRUST');
+    }
+
     const listing = await this.prisma.soukListing.create({
       data: {
         sellerId,
@@ -194,6 +216,59 @@ export class SoukElKantoService {
     return this.prisma.soukListing.update({
       where: { id },
       data: { status: 'REMOVED', removedAt: new Date() },
+    });
+  }
+
+  /**
+   * Issue a presigned PUT URL the FE uses to upload a single photo to R2.
+   * The BE never touches the bytes — only signs the request.
+   * Returns 503 if R2 is not configured (typical local dev).
+   */
+  async requestPhotoUploadUrl(
+    userId: string,
+    dto: { filename: string; contentType: string; bytes: number },
+  ): Promise<PhotoUploadUrlResponse> {
+    return this.storage.presignUpload({
+      userId,
+      filename: dto.filename,
+      contentType: dto.contentType,
+      bytes: dto.bytes,
+    });
+  }
+
+  /**
+   * File a report on a listing. Convenience wrapper over the cross-platform
+   * Reports pipeline — auto-fills `originSubdomain`, derives offender from
+   * the listing's seller, and ensures the FE only has to think in terms of
+   * "report this listing".
+   */
+  async reportListing(
+    reporterId: string,
+    listingId: string,
+    dto: {
+      incidentType: IncidentType;
+      severity: number;
+      reason?: string;
+      evidencePhotoR2Key?: string;
+    },
+  ) {
+    const listing = await this.prisma.soukListing.findUnique({
+      where: { id: listingId },
+      select: { id: true, sellerId: true },
+    });
+    if (!listing) {
+      throw new NotFoundException(`Listing ${listingId} not found`);
+    }
+    if (listing.sellerId === reporterId) {
+      throw new ForbiddenException('Cannot report your own listing');
+    }
+
+    return this.reports.file({
+      reporterId,
+      offenderId: listing.sellerId,
+      incidentType: dto.incidentType,
+      severity: dto.severity,
+      originSubdomain: 'kanto',
     });
   }
 

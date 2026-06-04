@@ -31,6 +31,28 @@ export const envSchema = z.object({
 
   TRUST_SCORE_BASE: z.coerce.number().int().default(100),
   TRUST_SCORE_BAN_THRESHOLD: z.coerce.number().int().default(20),
+
+  // ── Cloudflare R2 (Souk ElKanto photo storage) ────────────────
+  // Leave blank in dev — endpoints that need R2 will return 503.
+  KANTO_R2_ENDPOINT: z.string().optional().default(''),
+  KANTO_R2_ACCESS_KEY_ID: z.string().optional().default(''),
+  KANTO_R2_SECRET: z.string().optional().default(''),
+  KANTO_R2_BUCKET: z.string().optional().default(''),
+  KANTO_R2_PUBLIC_BASE: z.string().optional().default(''),
+  KANTO_R2_REGION: z.string().default('auto'),
+  KANTO_R2_PRESIGN_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+
+  // ── Auth (Phase A) ────────────────────────────────────────────
+  // Signing secret for the issued JWTs. Generate with:
+  //   node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+  JWT_SECRET: z.string().min(32).default('dev-only-secret-replace-me-32chars-min-aaaa'),
+  JWT_EXPIRES_IN: z.string().default('7d'),
+  OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  // When AUTH_DEV_BYPASS=true the code "000000" is accepted for ANY phone.
+  // Never enable in production.
+  AUTH_DEV_BYPASS: z.coerce.boolean().default(true),
+  AUTH_DEV_BYPASS_CODE: z.string().default('000000'),
 });
 
 export type Env = z.infer<typeof envSchema>;

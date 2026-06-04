@@ -40,6 +40,23 @@ export const configuration = () => {
       base: Number(env.TRUST_SCORE_BASE),
       banThreshold: Number(env.TRUST_SCORE_BAN_THRESHOLD),
     },
+    r2: {
+      endpoint: env.KANTO_R2_ENDPOINT,
+      accessKeyId: env.KANTO_R2_ACCESS_KEY_ID,
+      secret: env.KANTO_R2_SECRET,
+      bucket: env.KANTO_R2_BUCKET,
+      publicBase: env.KANTO_R2_PUBLIC_BASE,
+      region: env.KANTO_R2_REGION,
+      presignTtlSeconds: Number(env.KANTO_R2_PRESIGN_TTL_SECONDS),
+    },
+    auth: {
+      jwtSecret: env.JWT_SECRET,
+      jwtExpiresIn: env.JWT_EXPIRES_IN,
+      otpTtlSeconds: Number(env.OTP_TTL_SECONDS),
+      otpMaxAttempts: Number(env.OTP_MAX_ATTEMPTS),
+      devBypass: env.NODE_ENV !== 'production' && Boolean(env.AUTH_DEV_BYPASS),
+      devBypassCode: env.AUTH_DEV_BYPASS_CODE,
+    },
   };
 };
 

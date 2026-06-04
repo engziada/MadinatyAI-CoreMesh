@@ -1,10 +1,13 @@
 import { Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuditAction } from '@madinatyai/gateway';
 import { TenantGuard } from '@madinatyai/tenancy';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/types/authenticated-user';
 import { SoukElKantoService } from '../soukelkanto.service';
 
 @ApiTags('Souk ElKanto — Favorites')
+@ApiBearerAuth()
 @Controller('favorites')
 @UseGuards(TenantGuard)
 export class FavoritesController {
@@ -12,21 +15,18 @@ export class FavoritesController {
 
   @Post(':listingId')
   @AuditAction({ action: 'souk.favorite.add', target: 'favorite' })
-  add(@Param('listingId') listingId: string) {
-    const userId = 'demo-user';
-    return this.souk.addFavorite(userId, listingId);
+  add(@CurrentUser() user: AuthenticatedUser, @Param('listingId') listingId: string) {
+    return this.souk.addFavorite(user.id, listingId);
   }
 
   @Delete(':listingId')
   @AuditAction({ action: 'souk.favorite.remove', target: 'favorite' })
-  remove(@Param('listingId') listingId: string) {
-    const userId = 'demo-user';
-    return this.souk.removeFavorite(userId, listingId);
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('listingId') listingId: string) {
+    return this.souk.removeFavorite(user.id, listingId);
   }
 
   @Get()
-  list() {
-    const userId = 'demo-user';
-    return this.souk.listFavorites(userId);
+  list(@CurrentUser() user: AuthenticatedUser) {
+    return this.souk.listFavorites(user.id);
   }
 }

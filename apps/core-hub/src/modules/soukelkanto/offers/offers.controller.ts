@@ -1,11 +1,14 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuditAction } from '@madinatyai/gateway';
 import { TenantGuard } from '@madinatyai/tenancy';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/types/authenticated-user';
 import { SoukElKantoService } from '../soukelkanto.service';
 import { CounterOfferDto, CreateOfferDto, DeclineOfferDto } from '../dto/create-offer.dto';
 
 @ApiTags('Souk ElKanto — Offers')
+@ApiBearerAuth()
 @Controller('offers')
 @UseGuards(TenantGuard)
 export class OffersController {
@@ -13,48 +16,49 @@ export class OffersController {
 
   @Post()
   @AuditAction({ action: 'souk.offer.create', target: 'offer' })
-  create(@Body() dto: CreateOfferDto) {
-    const buyerId = 'demo-buyer';
-    return this.souk.createOffer(buyerId, dto);
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateOfferDto) {
+    return this.souk.createOffer(user.id, dto);
   }
 
   @Patch(':id/accept')
   @AuditAction({ action: 'souk.offer.accept', target: 'offer' })
-  accept(@Param('id') id: string) {
-    const sellerId = 'demo-seller';
-    return this.souk.acceptOffer(id, sellerId);
+  accept(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.souk.acceptOffer(id, user.id);
   }
 
   @Patch(':id/decline')
   @AuditAction({ action: 'souk.offer.decline', target: 'offer' })
-  decline(@Param('id') id: string, @Body() dto: DeclineOfferDto) {
-    const sellerId = 'demo-seller';
-    return this.souk.declineOffer(id, sellerId, dto.reason);
+  decline(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: DeclineOfferDto,
+  ) {
+    return this.souk.declineOffer(id, user.id, dto.reason);
   }
 
   @Patch(':id/counter')
   @AuditAction({ action: 'souk.offer.counter', target: 'offer' })
-  counter(@Param('id') id: string, @Body() dto: CounterOfferDto) {
-    const sellerId = 'demo-seller';
-    return this.souk.counterOffer(id, sellerId, dto.amount);
+  counter(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CounterOfferDto,
+  ) {
+    return this.souk.counterOffer(id, user.id, dto.amount);
   }
 
   @Patch(':id/withdraw')
   @AuditAction({ action: 'souk.offer.withdraw', target: 'offer' })
-  withdraw(@Param('id') id: string) {
-    const buyerId = 'demo-buyer';
-    return this.souk.withdrawOffer(id, buyerId);
+  withdraw(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.souk.withdrawOffer(id, user.id);
   }
 
   @Get('sent')
-  sent() {
-    const buyerId = 'demo-buyer';
-    return this.souk.listSentOffers(buyerId);
+  sent(@CurrentUser() user: AuthenticatedUser) {
+    return this.souk.listSentOffers(user.id);
   }
 
   @Get('received')
-  received() {
-    const sellerId = 'demo-seller';
-    return this.souk.listReceivedOffers(sellerId);
+  received(@CurrentUser() user: AuthenticatedUser) {
+    return this.souk.listReceivedOffers(user.id);
   }
 }

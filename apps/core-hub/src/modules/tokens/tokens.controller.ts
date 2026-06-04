@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuditAction } from '@madinatyai/gateway';
 import {
   TokensService,
@@ -8,6 +8,8 @@ import {
   AllocateTokensDto,
   SetPricingDto,
 } from '@madinatyai/tokens';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 
 /**
  * Token wallet controller. Provides endpoints for users to view their wallet,
@@ -39,10 +41,19 @@ export class TokensController {
     return this.tokens.allocate(dto.userId, dto.activityType, dto.tokenType, dto.amount);
   }
 
-  /** Get the current user's wallet (balance + allocations + recent transactions). */
+  /** Admin / backoffice: read any user's wallet. */
   @Get('wallet')
+  @ApiBearerAuth()
   async wallet(@Query('userId') userId: string) {
     return this.tokens.getWallet(userId);
+  }
+
+  /** Authenticated user shortcut — resolves the principal from the JWT. */
+  @Get('wallet/me')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get the authenticated user\'s wallet' })
+  async myWallet(@CurrentUser() user: AuthenticatedUser) {
+    return this.tokens.getWallet(user.id);
   }
 
   /** List all active activity pricing entries. */

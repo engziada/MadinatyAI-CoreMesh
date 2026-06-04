@@ -223,6 +223,25 @@ model ActivityPricing {
   @@schema("core")
 }
 
+// ─────────────── Auth: OTP Challenges ───────────────
+// Short-lived one-time-password records for phone-based auth.
+// Phase A.1 — Postgres-backed (no Redis dep). TTL enforced via expiresAt
+// + nightly cleanup cron. codeHash = sha256(`${phoneNumber}:${code}`).
+model OtpChallenge {
+  id            String    @id @default(uuid())
+  phoneNumber   String
+  codeHash      String
+  purpose       String    @default("LOGIN") // LOGIN | REGISTER
+  expiresAt     DateTime
+  consumedAt    DateTime?
+  attempts      Int       @default(0)
+  createdAt     DateTime  @default(now())
+
+  @@index([phoneNumber, createdAt])
+  @@index([expiresAt])
+  @@schema("core")
+}
+
 // ─────────────── Per-tenant placeholder models ───────────────
 // Minimal tables so each tenant schema physically exists and
 // isolation can be verified. Each ecosystem app extends its own schema later.

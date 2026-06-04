@@ -1,10 +1,13 @@
 import { Controller, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuditAction } from '@madinatyai/gateway';
 import { TenantGuard } from '@madinatyai/tenancy';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/types/authenticated-user';
 import { SoukElKantoService } from '../soukelkanto.service';
 
 @ApiTags('Souk ElKanto — Handover')
+@ApiBearerAuth()
 @Controller('handover')
 @UseGuards(TenantGuard)
 export class HandoverController {
@@ -12,8 +15,7 @@ export class HandoverController {
 
   @Post(':offerId/confirm')
   @AuditAction({ action: 'souk.handover.confirm', target: 'handover' })
-  confirm(@Param('offerId') offerId: string) {
-    const userId = 'demo-user';
-    return this.souk.confirmHandover(offerId, userId);
+  confirm(@CurrentUser() user: AuthenticatedUser, @Param('offerId') offerId: string) {
+    return this.souk.confirmHandover(offerId, user.id);
   }
 }
