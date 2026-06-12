@@ -1,0 +1,60 @@
+name: Deploy BE (Fly.io)
+
+# Triggered automatically on push to main (after CI passes), and manually
+# via Run workflow → Run workflow on any branch.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Only one deploy in flight at a time per branch.
+  group: deploy-be-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy core-hub to Fly
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://api.madinatyai.com
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for git rev-parse
+
+      - name: Compute build metadata
+        id: meta
+        run: |
+          echo "git_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy \
+            --remote-only \
+            --app madinatyai-coremesh \
+            --build-arg BE_GIT_SHA=${{ steps.meta.outputs.git_sha }} \
+            --build-arg BE_BUILD_TIME=${{ steps.meta.outputs.build_time }}
+
+      - name: Smoke test — /api/v1/version reports the deployed SHA
+        run: |
+          # Give Fly a moment to flip traffic to the new machine.
+          sleep 10
+          DEPLOYED_SHA=$(curl -fsS https://api.madinatyai.com/api/v1/version | jq -r '.data.gitSha // .gitSha')
+          echo "Deployed gitSha: $DEPLOYED_SHA"
+          if [ "$DEPLOYED_SHA" != "${{ steps.meta.outputs.git_sha }}" ]; then
+            echo "::warning::Deployed SHA ($DEPLOYED_SHA) doesn't match expected (${{ steps.meta.outputs.git_sha }}). May be a Fly rolling-deploy window — verify with flyctl status."
+          fi
+
+      - name: Smoke test — /api/v1/health returns 200
+        run: |
+          curl -fsS https://api.madinatyai.com/api/v1/health | tee /dev/stderr

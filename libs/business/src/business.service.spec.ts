@@ -37,7 +37,7 @@ describe('BusinessService', () => {
 
   // ── Kitchen ──
 
-  it('creates a kitchen business', async () => {
+  it('creates a kitchen business with owner from JWT (R-11 F-06)', async () => {
     kitchenDelegate.findUnique.mockResolvedValue(null);
     kitchenDelegate.create.mockResolvedValue({
       id: 'b-1',
@@ -45,8 +45,7 @@ describe('BusinessService', () => {
       name: 'Ali Kitchen',
     });
 
-    const result = await service.createBusiness('kitchen', {
-      ownerGlobalUserId: 'u-1',
+    const result = await service.createBusiness('kitchen', 'u-1', {
       slug: 'ali-kitchen',
       name: 'Ali Kitchen',
       cuisineType: 'Egyptian',
@@ -54,7 +53,12 @@ describe('BusinessService', () => {
 
     expect(result.slug).toBe('ali-kitchen');
     expect(kitchenDelegate.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ cuisineType: 'Egyptian' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cuisineType: 'Egyptian',
+          ownerGlobalUserId: 'u-1', // bound from the controller's @CurrentUser
+        }),
+      }),
     );
   });
 
@@ -62,8 +66,7 @@ describe('BusinessService', () => {
     kitchenDelegate.findUnique.mockResolvedValue({ id: 'b-existing', slug: 'ali-kitchen' });
 
     await expect(
-      service.createBusiness('kitchen', {
-        ownerGlobalUserId: 'u-1',
+      service.createBusiness('kitchen', 'u-1', {
         slug: 'ali-kitchen',
         name: 'Ali Kitchen',
       }),
@@ -154,8 +157,7 @@ describe('BusinessService', () => {
       subjects: ['Math', 'Physics'],
     });
 
-    const result = await service.createBusiness('tutor', {
-      ownerGlobalUserId: 'u-1',
+    const result = await service.createBusiness('tutor', 'u-1', {
       slug: 'ahmed-math',
       name: 'Ahmed Math',
       subjects: '["Math","Physics"]',

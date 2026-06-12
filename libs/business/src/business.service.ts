@@ -28,9 +28,15 @@ function getDelegate(tx: any, table: string): Delegate {
 export class BusinessService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Register a new business within the current tenant. */
+  /**
+   * Register a new business within the current tenant.
+   *
+   * R-11 F-06: `ownerGlobalUserId` is now an explicit argument bound from the
+   * JWT by the controller — it is no longer accepted in the request body.
+   */
   async createBusiness(
     tenant: BusinessTenant,
+    ownerGlobalUserId: string,
     dto: CreateBusinessDto,
   ): Promise<Record<string, unknown>> {
     const config = BUSINESS_SCHEMAS[tenant];
@@ -45,7 +51,7 @@ export class BusinessService {
     if (existing) throw new DuplicateSlugException(dto.slug);
 
     const data: Record<string, unknown> = {
-      ownerGlobalUserId: dto.ownerGlobalUserId,
+      ownerGlobalUserId,
       slug: dto.slug,
       name: dto.name,
       branding: dto.branding ?? {},
@@ -83,6 +89,28 @@ export class BusinessService {
     );
     if (!business) throw new BusinessNotFoundException(slug);
     return business as Record<string, unknown>;
+  }
+
+  /**
+   * R-11 F-06 — Load a business by id (raw, no throw).
+   * Used by the controller's ownership check on mutate endpoints. Returns the
+   * row including `ownerGlobalUserId`, or null if not found.
+   */
+  async loadById(
+    tenant: BusinessTenant,
+    businessId: string,
+  ): Promise<{ id: string; ownerGlobalUserId: string } | null> {
+    const config = BUSINESS_SCHEMAS[tenant];
+    if (!config) throw new Error(`Tenant ${tenant} does not support business sub-tenancy`);
+
+    const schemaName = `tenant_${tenant}`;
+    const row = (await this.prisma.withTenantSchema(schemaName, (tx) =>
+      getDelegate(tx, config.table).findUnique({
+        where: { id: businessId },
+        select: { id: true, ownerGlobalUserId: true },
+      }),
+    )) as { id: string; ownerGlobalUserId: string } | null;
+    return row;
   }
 
   /** List all active businesses in the tenant. */

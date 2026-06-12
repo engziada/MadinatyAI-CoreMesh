@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '@madinatyai/prisma';
+import { RateLimitError } from '@madinatyai/gateway';
 import { OtpService } from './otp.service';
 import { OTP_DELIVERY_PROVIDER, type OtpDeliveryProvider } from './providers/otp-delivery.provider';
 
@@ -11,6 +12,8 @@ const makePrisma = () => ({
     findFirst: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn(),
+    // R-11 F-17: throttle counter — defaults to 0 (no recent OTPs).
+    count: jest.fn().mockResolvedValue(0),
   },
 });
 
@@ -67,6 +70,36 @@ describe('OtpService', () => {
       expect(delivery.send).toHaveBeenCalledTimes(1);
       const [, code] = delivery.send.mock.calls[0];
       expect(code).toMatch(/^\d{6}$/);
+    });
+
+    // ── R-11 F-17 — per-phone issuance throttle ────────────────────────
+    it('F-17: refuses to issue when another OTP was issued in the last 60s', async () => {
+      // First count() call = burst-window (60s), second call = hourly. The
+      // service short-circuits as soon as the first count > 0.
+      prisma.otpChallenge.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+      await expect(service.issue('+201001234567', 'LOGIN')).rejects.toBeInstanceOf(
+        RateLimitError,
+      );
+      expect(prisma.otpChallenge.create).not.toHaveBeenCalled();
+      expect(delivery.send).not.toHaveBeenCalled();
+    });
+
+    it('F-17: refuses to issue once 5 OTPs have been issued in the last hour', async () => {
+      // Burst-window clear (0), hourly = 5 (cap hit).
+      prisma.otpChallenge.count.mockResolvedValueOnce(0).mockResolvedValueOnce(5);
+      await expect(service.issue('+201001234567', 'LOGIN')).rejects.toBeInstanceOf(
+        RateLimitError,
+      );
+      expect(prisma.otpChallenge.create).not.toHaveBeenCalled();
+    });
+
+    it('F-17: clear windows → issuance proceeds', async () => {
+      prisma.otpChallenge.count.mockResolvedValueOnce(0).mockResolvedValueOnce(4);
+      prisma.otpChallenge.updateMany.mockResolvedValue({ count: 0 });
+      prisma.otpChallenge.create.mockResolvedValue({ id: 'c1' });
+      await service.issue('+201001234567', 'REGISTER');
+      expect(prisma.otpChallenge.create).toHaveBeenCalledTimes(1);
+      expect(delivery.send).toHaveBeenCalledTimes(1);
     });
   });
 

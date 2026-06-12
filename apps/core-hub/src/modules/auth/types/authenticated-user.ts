@@ -13,11 +13,16 @@ export interface AuthenticatedUser {
 /**
  * JWT payload contract. Matches what {@link AuthService.issueToken} signs.
  * `sub` is the GlobalUser.id (standard JWT subject claim).
+ *
+ * R-11 F-16 — `jti` is a server-generated random ID per issuance. Stored in
+ * the JTI deny-list on logout so subsequent verifies fail even when the token
+ * hasn't expired yet.
  */
 export interface JwtPayload {
   sub: string;
   phoneNumber: string;
   role: Role;
+  jti?: string;
   iat?: number;
   exp?: number;
 }

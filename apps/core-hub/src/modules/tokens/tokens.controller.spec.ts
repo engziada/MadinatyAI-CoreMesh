@@ -1,7 +1,29 @@
+/**
+ * TokensController unit tests.
+ *
+ * Updated for R-11 F-03: spend/allocate now bind userId from @CurrentUser
+ * instead of accepting it in the body. Tests pass a `user` argument as the
+ * controller's first parameter to mirror what the guard chain would inject
+ * at runtime.
+ */
+
 import { TokensController } from './tokens.controller';
 import { TokensService } from '@madinatyai/tokens';
+import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 
 describe('TokensController', () => {
+  const user: AuthenticatedUser = {
+    id: 'u-1',
+    phoneNumber: '+201000000001',
+    role: 'USER',
+  } as AuthenticatedUser;
+
+  const adminUser: AuthenticatedUser = {
+    id: 'admin-1',
+    phoneNumber: '+201999999999',
+    role: 'PLATFORM_ADMIN',
+  } as AuthenticatedUser;
+
   const tokensService = {
     credit: jest.fn().mockResolvedValue({ userId: 'u-1', businessTokens: 50, individualTokens: 0 }),
     spend: jest.fn().mockResolvedValue({ userId: 'u-1', businessTokens: 40, individualTokens: 0 }),
@@ -18,6 +40,9 @@ describe('TokensController', () => {
   };
 
   const controller = new TokensController(tokensService as unknown as TokensService);
+  // Suppress the unused-but-real reference to adminUser — kept for symmetry
+  // with the role-protected endpoints whose guard isn't part of this unit test.
+  void adminUser;
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -27,9 +52,8 @@ describe('TokensController', () => {
     expect(result.userId).toBe('u-1');
   });
 
-  it('spends tokens via POST /spend', async () => {
-    const result = await controller.spend({
-      userId: 'u-1',
+  it('spends tokens via POST /spend (actor from JWT, NOT body)', async () => {
+    const result = await controller.spend(user, {
       activityType: 'kitchen_rental',
       tokenType: 'business',
     });
@@ -42,9 +66,8 @@ describe('TokensController', () => {
     expect(result.businessTokens).toBe(40);
   });
 
-  it('allocates tokens via POST /allocate', async () => {
-    await controller.allocate({
-      userId: 'u-1',
+  it('allocates tokens via POST /allocate (actor from JWT, NOT body)', async () => {
+    await controller.allocate(user, {
       activityType: 'souk_ad',
       tokenType: 'business',
       amount: 30,

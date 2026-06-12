@@ -424,6 +424,11 @@ model SoukOffer {
   declinedAt         DateTime?
   withdrawnAt        DateTime?
   expiredAt          DateTime?
+  // Reason a non-PENDING terminal state was reached. Free-form snake_case tag
+  // produced by the BE — e.g. "auto_declined_listing_sold" (R-01 cascade),
+  // "listing_removed_by_seller" (R-08), or a user-supplied decline message.
+  // FE can localize using a key map.
+  declineReason      String?         @db.VarChar(80)
   safeMeetSpotId     String?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt

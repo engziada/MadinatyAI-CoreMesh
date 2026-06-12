@@ -1,4 +1,12 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  GoneException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { ErrorCode, GatewayException } from '@madinatyai/gateway';
 import { ConfigService } from '@nestjs/config';
 import { IncidentType } from '@prisma/client';
 import { PrismaService } from '@madinatyai/prisma';
@@ -30,6 +38,23 @@ export enum SoukOfferStatus {
   CONFIRMED = 'CONFIRMED',
   CLOSED = 'CLOSED',
 }
+
+/**
+ * Cap on the offer-counter chain depth, in *additional offers* past the
+ * original. 2 = original + 2 counters = 3 rounds total ("offer → counter →
+ * re-counter, after that take-it-or-leave-it"). Prevents infinite-haggling
+ * spam and gives the seller a definite floor on negotiation rounds.
+ */
+const MAX_COUNTER_DEPTH = 2;
+
+/**
+ * Sanity bands for offer + counter amounts, expressed as multiples of the
+ * listing's asking price. Stops grief-offers (₤1 troll bids, 1,000× counters)
+ * without being prescriptive about what's a "fair" haggle. Buyers + sellers
+ * can still negotiate aggressively within [50% .. 150%] of asking.
+ */
+const OFFER_MIN_RATIO = 0.5;
+const OFFER_MAX_RATIO = 1.5;
 
 /**
  * Core Souk ElKanto business logic service.
@@ -78,6 +103,23 @@ export class SoukElKantoService {
     if (seller.trustScore <= threshold) {
       throw new ForbiddenException('INSUFFICIENT_TRUST');
     }
+    // Loose gate (#1): require complete profile before publishing a listing.
+    await this.assertProfileComplete(sellerId, 'list an item');
+
+    // R-11 F-12 — validate r2Key ownership BEFORE writing photos. Each key
+    // must start with the seller's own upload prefix (`uploads/<sellerId>/`)
+    // so attackers can't reference another user's photo. The `url` field is
+    // ignored on input and always derived from `publicBase + r2Key`.
+    if (dto.photos?.length) {
+      const expectedPrefix = `uploads/${sellerId}/`;
+      for (const p of dto.photos) {
+        if (!p.r2Key.startsWith(expectedPrefix)) {
+          throw new ForbiddenException(
+            'PHOTO_OWNERSHIP_MISMATCH: r2Key must belong to the seller',
+          );
+        }
+      }
+    }
 
     const listing = await this.prisma.soukListing.create({
       data: {
@@ -95,7 +137,8 @@ export class SoukElKantoService {
           ? {
               create: dto.photos.map((p) => ({
                 r2Key: p.r2Key,
-                url: p.url || '',
+                // R-11 F-12: derive URL server-side, never trust client.
+                url: this.storage.publicUrlForKey(p.r2Key) ?? `/api/v1/uploads/${p.r2Key}`,
                 width: 0,
                 height: 0,
                 bytes: 0,
@@ -108,6 +151,23 @@ export class SoukElKantoService {
     });
     this.logger.log(`Listing created: ${listing.id} by ${sellerId}`);
     return listing;
+  }
+
+  /**
+   * Activity page (#8) — return the user's listings across all statuses,
+   * newest first. Includes one photo for thumbnail rendering and the offer
+   * counts that the activity view aggregates per row.
+   */
+  async listMyListings(sellerId: string) {
+    return this.prisma.soukListing.findMany({
+      where: { sellerId },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      include: {
+        photos: { orderBy: { position: 'asc' }, take: 1 },
+        _count: { select: { offers: true } },
+      },
+    });
   }
 
   async listListings(params: {
@@ -175,6 +235,12 @@ export class SoukElKantoService {
       include: { photos: { orderBy: { position: 'asc' } } },
     });
     if (!listing) throw new NotFoundException(`Listing ${id} not found`);
+    // R-08: REMOVED listings respond 410 Gone instead of 200. This lets the
+    // FE render a "this listing is no longer available" terminal state,
+    // distinct from a fresh 404.
+    if (listing.status === 'REMOVED') {
+      throw new GoneException(`Listing ${id} has been removed`);
+    }
     // Increment view count
     await this.prisma.soukListing.update({
       where: { id },
@@ -215,10 +281,61 @@ export class SoukElKantoService {
     if (!listing) throw new NotFoundException(`Listing ${id} not found`);
     if (listing.sellerId !== sellerId) throw new ForbiddenException('Not the owner');
 
-    return this.prisma.soukListing.update({
-      where: { id },
-      data: { status: 'REMOVED', removedAt: new Date() },
-    });
+    // R-08: soft-delete the listing AND cascade-expire all open offers in one
+    // transaction, so buyers see deterministic state. Open offers (PENDING /
+    // COUNTERED) flip to EXPIRED with reason `listing_removed_by_seller`.
+    const { listingUpdated, expiredOffers } = await this.prisma.$transaction(
+      async (tx) => {
+        const openOffers = await tx.soukOffer.findMany({
+          where: {
+            listingId: id,
+            status: { in: ['PENDING', 'COUNTERED'] },
+          },
+          select: { id: true, buyerId: true, amount: true },
+        });
+        if (openOffers.length > 0) {
+          await tx.soukOffer.updateMany({
+            where: { id: { in: openOffers.map((o) => o.id) } },
+            data: {
+              status: 'EXPIRED',
+              expiredAt: new Date(),
+              declineReason: 'listing_removed_by_seller',
+            },
+          });
+        }
+        const updated = await tx.soukListing.update({
+          where: { id },
+          data: { status: 'REMOVED', removedAt: new Date() },
+        });
+        return { listingUpdated: updated, expiredOffers: openOffers };
+      },
+    );
+
+    // Notify each buyer (best-effort, outside the transaction).
+    for (const off of expiredOffers) {
+      try {
+        await this.events.emit({
+          sourceSubdomain: 'kanto',
+          eventType: 'souk.offer.expired_listing_removed',
+          userId: off.buyerId,
+          payload: {
+            offerId: off.id,
+            listingId: id,
+            reason: 'listing_removed_by_seller',
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Expire event emit failed for ${off.id}: ${(err as Error).message}`,
+        );
+      }
+      this.notifyAsync('OFFER_WITHDRAWN', off.buyerId, {
+        listingTitle: listing.title,
+        offerAmount: off.amount,
+      });
+    }
+
+    return listingUpdated;
   }
 
   /**
@@ -284,6 +401,36 @@ export class SoukElKantoService {
     if (!listing) throw new NotFoundException(`Listing ${dto.listingId} not found`);
     if (listing.status !== 'ACTIVE') throw new ForbiddenException('Listing is not active');
     if (listing.sellerId === buyerId) throw new ForbiddenException('Cannot offer on own listing');
+    this.assertAmountInBand(dto.amount, listing.askingPrice);
+
+    // R-08: one PENDING offer per (buyer, listing). Counter-offer children
+    // are EXCLUDED via parentOfferId IS NULL — those are seller-initiated
+    // children of an existing thread and don't count against the dup guard.
+    const existingPending = await this.prisma.soukOffer.findFirst({
+      where: {
+        listingId: dto.listingId,
+        buyerId,
+        status: 'PENDING',
+        parentOfferId: null,
+      },
+      select: { id: true, amount: true },
+    });
+    if (existingPending) {
+      // Use the closed ErrorCode enum + a structured detail blob carrying the
+      // OFFER_ALREADY_PENDING sub-code + existing-offer reference so the FE
+      // can deep-link the user back to their existing offer.
+      throw new GatewayException(
+        ErrorCode.CONFLICT,
+        'You already have a pending offer on this listing.',
+        [
+          {
+            rule: 'OFFER_ALREADY_PENDING',
+            existingOfferId: existingPending.id,
+            existingAmount: existingPending.amount,
+          },
+        ],
+      );
+    }
 
     const offer = await this.prisma.soukOffer.create({
       data: {
@@ -328,6 +475,14 @@ export class SoukElKantoService {
     if (offer.status !== 'PENDING' && offer.status !== 'COUNTERED') {
       throw new ForbiddenException('Offer cannot be accepted');
     }
+    // R-01: refuse if listing is already in a terminal/reserved state.
+    if (offer.listing.status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        `LISTING_NOT_ACTIVE: listing is ${offer.listing.status}`,
+      );
+    }
+    // Loose gate (#1): seller must have a complete profile to accept.
+    await this.assertProfileComplete(sellerId, 'accept an offer');
 
     // Token hold: lock buyer tokens
     if (offer.tokenHoldAmount && offer.tokenHoldAmount > 0) {
@@ -338,17 +493,43 @@ export class SoukElKantoService {
       }
     }
 
-    const updated = await this.prisma.soukOffer.update({
-      where: { id: offerId },
-      data: { status: 'ACCEPTED', acceptedAt: new Date() },
-    });
+    // R-01: cascade-decline siblings + flip listing → RESERVED atomically.
+    // Returns the freshly-accepted offer + the list of cascaded sibling ids
+    // so we can fire per-buyer notifications outside the transaction.
+    const { updated, cascadedSiblings } = await this.prisma.$transaction(
+      async (tx) => {
+        // Cascade-decline every other PENDING/COUNTERED offer on this listing.
+        const siblings = await tx.soukOffer.findMany({
+          where: {
+            listingId: offer.listingId,
+            id: { not: offerId },
+            status: { in: ['PENDING', 'COUNTERED'] },
+          },
+          select: { id: true, buyerId: true, amount: true },
+        });
+        if (siblings.length > 0) {
+          await tx.soukOffer.updateMany({
+            where: { id: { in: siblings.map((s) => s.id) } },
+            data: {
+              status: 'DECLINED',
+              declinedAt: new Date(),
+              declineReason: 'auto_declined_listing_sold',
+            },
+          });
+        }
+        const updatedOffer = await tx.soukOffer.update({
+          where: { id: offerId },
+          data: { status: 'ACCEPTED', acceptedAt: new Date() },
+        });
+        await tx.soukListing.update({
+          where: { id: offer.listingId },
+          data: { status: 'RESERVED' },
+        });
+        return { updated: updatedOffer, cascadedSiblings: siblings };
+      },
+    );
 
-    await this.prisma.soukListing.update({
-      where: { id: offer.listingId },
-      data: { status: 'RESERVED' },
-    });
-
-    // Emit event
+    // Emit event for the accepted offer
     try {
       await this.events.emit({
         sourceSubdomain: 'kanto',
@@ -360,7 +541,33 @@ export class SoukElKantoService {
       this.logger.warn(`Event emit failed: ${(err as Error).message}`);
     }
 
-    // Notify buyer via WhatsApp (fire-and-forget)
+    // R-01: fire OFFER_DECLINED_DUE_TO_ACCEPT for each cascaded sibling.
+    for (const sib of cascadedSiblings) {
+      try {
+        await this.events.emit({
+          sourceSubdomain: 'kanto',
+          eventType: 'souk.offer.cascade_declined',
+          userId: sib.buyerId,
+          payload: {
+            offerId: sib.id,
+            listingId: offer.listingId,
+            reason: 'auto_declined_listing_sold',
+            winningOfferId: offerId,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Cascade-decline event emit failed for ${sib.id}: ${(err as Error).message}`,
+        );
+      }
+      // WhatsApp notification — best-effort.
+      this.notifyAsync('OFFER_DECLINED', sib.buyerId, {
+        listingTitle: offer.listing.title,
+        offerAmount: sib.amount,
+      });
+    }
+
+    // Notify the winning buyer via WhatsApp (fire-and-forget)
     this.notifyAsync('OFFER_ACCEPTED', offer.buyerId, {
       listingTitle: offer.listing.title,
       offerAmount: offer.amount,
@@ -369,7 +576,7 @@ export class SoukElKantoService {
     return updated;
   }
 
-  async declineOffer(offerId: string, sellerId: string, _reason?: string) {
+  async declineOffer(offerId: string, sellerId: string, reason?: string) {
     const offer = await this.prisma.soukOffer.findUnique({
       where: { id: offerId },
       include: { listing: true },
@@ -379,10 +586,21 @@ export class SoukElKantoService {
     if (offer.status !== 'PENDING' && offer.status !== 'COUNTERED') {
       throw new ForbiddenException('Offer cannot be declined');
     }
+    // R-01: refuse if the listing has moved past ACTIVE (e.g. RESERVED, SOLD,
+    // REMOVED). Decline only makes sense while the listing is still active.
+    if (offer.listing.status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        `LISTING_NOT_ACTIVE: listing is ${offer.listing.status}`,
+      );
+    }
 
     const updated = await this.prisma.soukOffer.update({
       where: { id: offerId },
-      data: { status: 'DECLINED', declinedAt: new Date() },
+      data: {
+        status: 'DECLINED',
+        declinedAt: new Date(),
+        declineReason: reason?.trim() ? reason.trim().slice(0, 80) : undefined,
+      },
     });
 
     // Notify buyer via WhatsApp (fire-and-forget)
@@ -402,6 +620,15 @@ export class SoukElKantoService {
     if (!parent) throw new NotFoundException(`Offer ${offerId} not found`);
     if (parent.sellerId !== sellerId) throw new ForbiddenException('Not the seller');
     if (parent.status !== 'PENDING') throw new ForbiddenException('Offer cannot be countered');
+    // R-01: refuse if the listing has moved past ACTIVE.
+    if (parent.listing.status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        `LISTING_NOT_ACTIVE: listing is ${parent.listing.status}`,
+      );
+    }
+    this.assertAmountInBand(amount, parent.listing.askingPrice);
+    // Cap chain depth: refuse if the new child would push us past MAX_COUNTER_DEPTH.
+    await this.assertCounterDepthAllowed(parent.parentOfferId);
 
     // Mark parent as countered
     await this.prisma.soukOffer.update({
@@ -438,8 +665,14 @@ export class SoukElKantoService {
     });
     if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
     if (offer.buyerId !== buyerId) throw new ForbiddenException('Not the buyer');
-    if (offer.status !== 'PENDING' && offer.status !== 'COUNTERED') {
-      throw new ForbiddenException('Offer cannot be withdrawn');
+    // Only PENDING offers can be withdrawn. Once the seller has countered, the
+    // parent is COUNTERED and the active negotiation has moved to the child;
+    // withdrawing the historical parent at that point makes no sense (and
+    // surprises the seller). The user can decline the active counter instead.
+    if (offer.status !== 'PENDING') {
+      throw new ForbiddenException(
+        `Offer cannot be withdrawn (status is ${offer.status}). Once countered, decline the active counter to exit the thread.`,
+      );
     }
 
     const updated = await this.prisma.soukOffer.update({
@@ -456,11 +689,341 @@ export class SoukElKantoService {
     return updated;
   }
 
+  // ───────────── R-02 · Buyer-side counter-offer actions ─────────────
+  //
+  // When the seller counters, BE creates a child SoukOffer with parentOfferId
+  // set (see counterOffer above). The child has the SAME buyer/seller
+  // assignment as the parent. The buyer now needs UI actions on that child:
+  //   - accept it (closes the deal at the seller's counter amount)
+  //   - decline it (no deal; listing stays ACTIVE)
+  //   - counter again (creates a grandchild offer with parentOfferId pointing
+  //     to the child)
+  //
+  // Authorization:
+  //   - All three require the caller to be the offer's buyerId.
+  //   - All three require offer.parentOfferId !== null. We refuse on
+  //     non-counter offers because the seller-side endpoints already cover
+  //     those flows.
+
+  /** Buyer accepts a seller's counter. Same cascade as seller acceptOffer. */
+  async buyerAcceptCounter(offerId: string, buyerId: string) {
+    const offer = await this.prisma.soukOffer.findUnique({
+      where: { id: offerId },
+      include: { listing: true },
+    });
+    if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
+    if (offer.buyerId !== buyerId) throw new ForbiddenException('Not the buyer');
+    if (offer.parentOfferId === null) {
+      throw new ForbiddenException(
+        'BUYER_ACCEPT_NOT_COUNTER: this endpoint only accepts counter-offers',
+      );
+    }
+    if (offer.status !== 'PENDING') {
+      throw new ForbiddenException('Offer cannot be accepted');
+    }
+    if (offer.listing.status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        `LISTING_NOT_ACTIVE: listing is ${offer.listing.status}`,
+      );
+    }
+    // Loose gate (#1): buyer must have a complete profile to accept a counter.
+    await this.assertProfileComplete(buyerId, 'accept this counter-offer');
+
+    // Token hold: if the BUYER attached a hold to the original offer, run the
+    // spend now. Counter offers themselves don't usually carry a hold.
+    if (offer.tokenHoldAmount && offer.tokenHoldAmount > 0) {
+      try {
+        await this.tokens.spend(offer.buyerId, 'SOUK_OFFER_HOLD', 'individual', offerId);
+      } catch {
+        throw new ForbiddenException('TOKEN_HOLD_FAILED');
+      }
+    }
+
+    // Reuse R-01's cascade pattern. The accepted offer itself is excluded from
+    // the cascade by id; its parent (status='COUNTERED') is excluded because
+    // it's not in the PENDING/COUNTERED set for `update`.
+    // Wait — COUNTERED IS in the set. So the parent would get re-flipped to
+    // DECLINED. That's actually fine semantically: the buyer chose the
+    // counter, so the original is dead too. But for cleanliness, exclude the
+    // parent so it stays as the historical COUNTERED record.
+    const { updated, cascadedSiblings } = await this.prisma.$transaction(
+      async (tx) => {
+        const siblings = await tx.soukOffer.findMany({
+          where: {
+            listingId: offer.listingId,
+            id: { notIn: [offerId, offer.parentOfferId!] },
+            status: { in: ['PENDING', 'COUNTERED'] },
+          },
+          select: { id: true, buyerId: true, amount: true },
+        });
+        if (siblings.length > 0) {
+          await tx.soukOffer.updateMany({
+            where: { id: { in: siblings.map((s) => s.id) } },
+            data: {
+              status: 'DECLINED',
+              declinedAt: new Date(),
+              declineReason: 'auto_declined_listing_sold',
+            },
+          });
+        }
+        const updatedOffer = await tx.soukOffer.update({
+          where: { id: offerId },
+          data: { status: 'ACCEPTED', acceptedAt: new Date() },
+        });
+        await tx.soukListing.update({
+          where: { id: offer.listingId },
+          data: { status: 'RESERVED' },
+        });
+        return { updated: updatedOffer, cascadedSiblings: siblings };
+      },
+    );
+
+    // Events + notifications, same shape as seller-accept.
+    try {
+      await this.events.emit({
+        sourceSubdomain: 'kanto',
+        eventType: 'souk.offer.accepted',
+        userId: offer.sellerId,
+        payload: {
+          offerId,
+          listingId: offer.listingId,
+          sellerId: offer.sellerId,
+          buyerId: offer.buyerId,
+          acceptedBy: 'buyer',
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Event emit failed: ${(err as Error).message}`);
+    }
+    for (const sib of cascadedSiblings) {
+      try {
+        await this.events.emit({
+          sourceSubdomain: 'kanto',
+          eventType: 'souk.offer.cascade_declined',
+          userId: sib.buyerId,
+          payload: {
+            offerId: sib.id,
+            listingId: offer.listingId,
+            reason: 'auto_declined_listing_sold',
+            winningOfferId: offerId,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Cascade-decline event emit failed for ${sib.id}: ${(err as Error).message}`,
+        );
+      }
+      this.notifyAsync('OFFER_DECLINED', sib.buyerId, {
+        listingTitle: offer.listing.title,
+        offerAmount: sib.amount,
+      });
+    }
+    // Notify the seller — they're the recipient of the accepted counter.
+    this.notifyAsync('OFFER_ACCEPTED', offer.sellerId, {
+      listingTitle: offer.listing.title,
+      offerAmount: offer.amount,
+    });
+
+    return updated;
+  }
+
+  /** Buyer declines a seller's counter. Listing stays ACTIVE. */
+  async buyerDeclineCounter(offerId: string, buyerId: string, reason?: string) {
+    const offer = await this.prisma.soukOffer.findUnique({
+      where: { id: offerId },
+      include: { listing: true },
+    });
+    if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
+    if (offer.buyerId !== buyerId) throw new ForbiddenException('Not the buyer');
+    if (offer.parentOfferId === null) {
+      throw new ForbiddenException(
+        'BUYER_DECLINE_NOT_COUNTER: this endpoint only declines counter-offers',
+      );
+    }
+    if (offer.status !== 'PENDING') {
+      throw new ForbiddenException('Offer cannot be declined');
+    }
+    if (offer.listing.status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        `LISTING_NOT_ACTIVE: listing is ${offer.listing.status}`,
+      );
+    }
+
+    const updated = await this.prisma.soukOffer.update({
+      where: { id: offerId },
+      data: {
+        status: 'DECLINED',
+        declinedAt: new Date(),
+        declineReason: reason?.trim()
+          ? reason.trim().slice(0, 80)
+          : 'declined_by_buyer',
+      },
+    });
+
+    this.notifyAsync('OFFER_DECLINED', offer.sellerId, {
+      listingTitle: offer.listing.title,
+      offerAmount: offer.amount,
+    });
+    return updated;
+  }
+
+  /**
+   * Buyer counter-offers back. Creates a grandchild offer with
+   * parentOfferId pointing at the current (seller-initiated) counter, and
+   * marks that counter as COUNTERED. Same buyer/seller assignment.
+   */
+  async buyerCounterOffer(offerId: string, buyerId: string, amount: number) {
+    const parent = await this.prisma.soukOffer.findUnique({
+      where: { id: offerId },
+      include: { listing: true },
+    });
+    if (!parent) throw new NotFoundException(`Offer ${offerId} not found`);
+    if (parent.buyerId !== buyerId) throw new ForbiddenException('Not the buyer');
+    if (parent.parentOfferId === null) {
+      throw new ForbiddenException(
+        'BUYER_COUNTER_NOT_COUNTER: re-counter only valid on seller-initiated counters',
+      );
+    }
+    if (parent.status !== 'PENDING') {
+      throw new ForbiddenException('Offer cannot be countered');
+    }
+    if (parent.listing.status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        `LISTING_NOT_ACTIVE: listing is ${parent.listing.status}`,
+      );
+    }
+    this.assertAmountInBand(amount, parent.listing.askingPrice);
+    // Same depth cap as seller-side counterOffer.
+    await this.assertCounterDepthAllowed(parent.parentOfferId);
+
+    // Mark parent as countered.
+    await this.prisma.soukOffer.update({
+      where: { id: offerId },
+      data: { status: 'COUNTERED' },
+    });
+
+    // Create the grandchild counter from buyer side. buyer/seller assignment
+    // stays the same — the only change is which party initiated.
+    const counter = await this.prisma.soukOffer.create({
+      data: {
+        listingId: parent.listingId,
+        buyerId: parent.buyerId,
+        sellerId: parent.sellerId,
+        amount,
+        status: 'PENDING',
+        parentOfferId: offerId,
+      },
+    });
+
+    this.notifyAsync('OFFER_COUNTERED', parent.sellerId, {
+      listingTitle: parent.listing.title,
+      offerAmount: parent.amount,
+      counterAmount: amount,
+    });
+
+    return counter;
+  }
+
+  /**
+   * Walks the `parentOfferId` chain of the offer being countered and throws
+   * if adding one more child would push past MAX_COUNTER_DEPTH.
+   *
+   * Depth of the offer being countered = count of its ancestors. The new
+   * child created by the counter would sit at depth+1. Iteration is bounded
+   * by `MAX_COUNTER_DEPTH + 2` as a safety net against malformed cycles.
+   */
+  /**
+   * Loose profile gate (beta v1) — block LIST and ACCEPT actions if the actor's
+   * profile is incomplete. Definition matches the FE's `hasCompleteProfile`:
+   * fullName + gender + birthdate + ≥18 years old. Other fields
+   * (madinatyGroup, buildingNo, aptNo) stay optional for v1.
+   *
+   * NB: KYC is NOT required at this tier — it's still optional. Stricter tiers
+   * (require KYC=APPROVED) can be layered in later by checking the related
+   * `kyc.status` field.
+   */
+  private async assertProfileComplete(userId: string, action: string): Promise<void> {
+    const user = await this.prisma.globalUser.findUnique({
+      where: { id: userId },
+      select: { metadata: true },
+    });
+    if (!user) throw new NotFoundException(`User ${userId} not found`);
+    const meta = (user.metadata ?? {}) as Record<string, unknown>;
+    const fullName = typeof meta.fullName === 'string' ? meta.fullName.trim() : '';
+    const gender = typeof meta.gender === 'string' ? meta.gender.trim() : '';
+    const birthdate = typeof meta.birthdate === 'string' ? meta.birthdate.trim() : '';
+    if (!fullName || !gender || !birthdate) {
+      throw new ForbiddenException(
+        `PROFILE_INCOMPLETE: complete your profile (full name, gender, birthdate) before you ${action}.`,
+      );
+    }
+    // ≥18 check — must be born more than 18 years ago.
+    const dob = new Date(birthdate);
+    if (Number.isNaN(dob.getTime())) {
+      throw new ForbiddenException(
+        `PROFILE_INCOMPLETE: birthdate is invalid. Update your profile before you ${action}.`,
+      );
+    }
+    const eighteenYearsAgo = new Date();
+    eighteenYearsAgo.setFullYear(eighteenYearsAgo.getFullYear() - 18);
+    if (dob > eighteenYearsAgo) {
+      throw new ForbiddenException(
+        `PROFILE_AGE_RESTRICTED: you must be 18 or older to ${action}.`,
+      );
+    }
+  }
+
+  /**
+   * Enforce the [50% .. 150%] of asking-price band on offer + counter amounts.
+   * Throws BadRequestException with a structured message so the FE can map
+   * it to a user-readable form. Amounts must be positive integers.
+   */
+  private assertAmountInBand(amount: number, askingPrice: number): void {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Offer amount must be greater than 0.');
+    }
+    const min = Math.ceil(askingPrice * OFFER_MIN_RATIO);
+    const max = Math.floor(askingPrice * OFFER_MAX_RATIO);
+    if (amount < min || amount > max) {
+      throw new BadRequestException(
+        `OFFER_OUT_OF_BAND: amount must be between ${min} and ${max} (50%-150% of the asking price ${askingPrice}).`,
+      );
+    }
+  }
+
+  private async assertCounterDepthAllowed(parentOfferId: string | null): Promise<void> {
+    let depth = 0;
+    let cursor: string | null = parentOfferId;
+    for (let i = 0; i < MAX_COUNTER_DEPTH + 2 && cursor; i++) {
+      depth += 1;
+      const row = await this.prisma.soukOffer.findUnique({
+        where: { id: cursor },
+        select: { parentOfferId: true },
+      });
+      cursor = row?.parentOfferId ?? null;
+    }
+    if (depth + 1 > MAX_COUNTER_DEPTH) {
+      throw new ForbiddenException(
+        `MAX_COUNTER_DEPTH_REACHED: offer chain limit is ${MAX_COUNTER_DEPTH} counters per offer thread (3 rounds total). Accept or decline.`,
+      );
+    }
+  }
+
   async listSentOffers(buyerId: string) {
+    // R-03a: include handover + ratings so /my/handovers can filter, render
+    // confirmation state, and detect whether the current user has rated yet —
+    // all without extra round trips per row. Capped at 100 to keep the
+    // response bounded; ACCEPTED-state pagination should be added before
+    // power users with very long histories exceed this.
     return this.prisma.soukOffer.findMany({
       where: { buyerId },
       orderBy: { createdAt: 'desc' },
-      include: { listing: { include: { photos: { take: 1 } } } },
+      take: 100,
+      include: {
+        listing: { include: { photos: { take: 1 } } },
+        handover: true,
+        ratings: { select: { id: true, raterId: true, score: true } },
+      },
     });
   }
 
@@ -468,7 +1031,12 @@ export class SoukElKantoService {
     return this.prisma.soukOffer.findMany({
       where: { sellerId },
       orderBy: { createdAt: 'desc' },
-      include: { listing: { include: { photos: { take: 1 } } } },
+      take: 100,
+      include: {
+        listing: { include: { photos: { take: 1 } } },
+        handover: true,
+        ratings: { select: { id: true, raterId: true, score: true } },
+      },
     });
   }
 

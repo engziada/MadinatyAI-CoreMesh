@@ -31,6 +31,18 @@ import { ReportListingDto } from '../dto/report-listing.dto';
 export class ListingsController {
   constructor(private readonly souk: SoukElKantoService) {}
 
+  /**
+   * "My listings (any status)" — for the My Activity page. Unlike public
+   * `GET /listings` which filters to ACTIVE, this returns the user's listings
+   * across every status (ACTIVE / RESERVED / REMOVED / EXPIRED). Auth-bound.
+   */
+  @Get('mine')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List the authenticated user\'s own listings (any status)' })
+  listMine(@CurrentUser() user: AuthenticatedUser) {
+    return this.souk.listMyListings(user.id);
+  }
+
   /** Browse — anonymous-friendly. */
   @Public()
   @Get()

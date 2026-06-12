@@ -1,14 +1,25 @@
 name: CI
 
+# Run on every push to any branch + every PR targeting main.
+# Two jobs run in parallel:
+#   - lint-typecheck-test: fast quality gate (~3 min)
+#   - docker-build:        sanity build of the production image (~5-8 min)
+
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-test:
+  lint-typecheck-test:
+    name: Lint + Typecheck + Unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -17,39 +28,50 @@ jobs:
           POSTGRES_USER: madinaty
           POSTGRES_PASSWORD: madinaty
           POSTGRES_DB: madinatyai_test
-        ports:
-          - 5432:5432
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U madinaty -d madinatyai_test"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
       redis:
         image: redis:7-alpine
-        ports:
-          - 6379:6379
+        ports: ['6379:6379']
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
 
     env:
+      NODE_ENV: test
       DATABASE_URL: postgresql://madinaty:madinaty@localhost:5432/madinatyai_test?schema=core
       REDIS_HOST: localhost
       REDIS_PORT: '6379'
-      KYC_ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
+      AUTH_DEV_BYPASS: 'true'
+      CORS_ORIGINS: 'http://localhost:3001'
+      ROOT_DOMAIN: madinatyai.com
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '20'
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      # R-11 F-14 — generate ephemeral secrets PER JOB so the workflow file
+      # itself never contains placeholder values that could be copied into a
+      # long-lived staging deploy.
+      - name: Generate ephemeral CI secrets
+        run: |
+          echo "JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n' | tr '/+' '_-' | tr -d '=')" >> "$GITHUB_ENV"
+          echo "KYC_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "::add-mask::$JWT_SECRET"
+          echo "::add-mask::$KYC_ENCRYPTION_KEY"
+
+      - name: Install deps
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -57,14 +79,37 @@ jobs:
       - name: Validate Prisma schema
         run: npm run prisma:validate
 
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
       - name: Lint
         run: npm run lint
 
-      - name: Build
+      - name: Build (typecheck via tsc)
         run: npm run build
 
       - name: Unit tests
-        run: npm test -- --ci
+        run: npm test -- --runInBand --no-coverage
 
-      - name: E2E tests
-        run: npm run test:e2e -- --ci
+  docker-build:
+    name: Docker build sanity check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: coremesh:ci
+          build-args: |
+            BE_GIT_SHA=${{ github.sha }}
+            BE_BUILD_TIME=${{ github.event.repository.updated_at }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

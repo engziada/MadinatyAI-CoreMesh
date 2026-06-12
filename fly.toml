@@ -1,0 +1,81 @@
+# fly.toml — Fly.io deployment manifest for the CoreMesh API gateway.
+#
+# Before first deploy:
+#   1. `flyctl auth login`
+#   2. `flyctl apps create madinatyai-coremesh --org <your-org>`
+#   3. Set secrets (NEVER commit values):
+#        flyctl secrets set DATABASE_URL='postgres://...' --app madinatyai-coremesh
+#        flyctl secrets set REDIS_HOST='...' REDIS_PORT='...' REDIS_PASSWORD='...'
+#        flyctl secrets set JWT_SECRET='<48 random bytes base64url>'
+#        flyctl secrets set KYC_ENCRYPTION_KEY='<32 random bytes hex>'
+#        flyctl secrets set KANTO_R2_ENDPOINT='...' KANTO_R2_ACCESS_KEY_ID='...' \
+#                          KANTO_R2_SECRET='...' KANTO_R2_BUCKET='...' \
+#                          KANTO_R2_PUBLIC_BASE='...'
+#        flyctl secrets set WAHA_BASE_URL='...' WAHA_API_KEY='...'
+#        flyctl secrets set CORS_ORIGINS='https://kanto.madinatyai.com'
+#   4. Provision the disk volume for KYC local-fallback storage (optional):
+#        flyctl volumes create kyc_storage --size 1 --region fra --app madinatyai-coremesh
+#   5. `flyctl deploy`
+#
+# Region pick: `fra` (Frankfurt) is the closest available to Egypt at the time
+# of writing (no MENA region in Fly's footprint yet). Re-evaluate after the
+# annual region survey — Fly opens MENA regions occasionally.
+
+app   = "madinatyai-coremesh"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  ROOT_DOMAIN = "madinatyai.com"
+  # Keep these non-secret defaults visible — overridable via `flyctl secrets`.
+  REDIS_PORT = "6379"
+  KYC_STORAGE_DRIVER = "local"
+  KYC_STORAGE_LOCAL_PATH = "/data/kyc"
+  KANTO_R2_REGION = "auto"
+  KANTO_R2_PRESIGN_TTL_SECONDS = "300"
+  TRUST_SCORE_BASE = "100"
+  TRUST_SCORE_BAN_THRESHOLD = "20"
+  # CRITICAL: AUTH_DEV_BYPASS must remain false in production. Do not override.
+  AUTH_DEV_BYPASS = "false"
+
+# Mount a small volume for KYC fallback uploads. Once S3/R2 is wired for KYC,
+# this becomes unused; until then it persists encrypted KYC docs across deploys.
+[[mounts]]
+  source = "kyc_storage"
+  destination = "/data/kyc"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  # Liveness probe — same endpoint as the in-container HEALTHCHECK.
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "get"
+    path = "/api/v1/health"
+
+# Beta sizing: shared-cpu-1x with 512MB. NestJS resident set is typically
+# 200-280MB at startup; 512 leaves headroom for BullMQ workers + Prisma pool.
+# Bump to 1GB if memory pressure shows up in `flyctl status`.
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+[deploy]
+  # Use rolling strategy so we never have zero healthy machines during deploy.
+  strategy = "rolling"
+  # Run pending Prisma migrations once before the new machines come up.
+  # Safe because `prisma migrate deploy` is idempotent. The Dockerfile CMD
+  # also runs migrate deploy as a belt-and-suspenders fallback.
+  release_command = "npx prisma migrate deploy"

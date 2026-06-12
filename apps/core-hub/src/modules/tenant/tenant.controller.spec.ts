@@ -1,8 +1,15 @@
 import { TenantController } from './tenant.controller';
 import { TenantItemsService } from './tenant-items.service';
 import { TenantContextService } from '@madinatyai/prisma';
+import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 
 describe('TenantController', () => {
+  const user: AuthenticatedUser = {
+    id: 'u-1',
+    phoneNumber: '+201000000001',
+    role: 'USER',
+  } as AuthenticatedUser;
+
   const tenantContext = {
     getOrThrow: jest
       .fn()
@@ -26,8 +33,8 @@ describe('TenantController', () => {
     expect(ctx.schemaName).toBe('tenant_souq');
   });
 
-  it('creates a tenant-scoped item', async () => {
-    const result = await controller.createItem('u-1', 'Laptop');
+  it('creates a tenant-scoped item with owner from JWT (R-11 F-07)', async () => {
+    const result = await controller.createItem(user, 'Laptop');
     expect(itemsService.create).toHaveBeenCalledWith('u-1', 'Laptop');
     expect((result as { id: string }).id).toBe('item-1');
   });

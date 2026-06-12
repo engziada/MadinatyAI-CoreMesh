@@ -6,43 +6,58 @@ import { EventsService } from '@madinatyai/events';
 import { TokensService } from '@madinatyai/tokens';
 import { ReportsService } from '../reports/reports.service';
 import { R2StorageService } from './storage/r2-storage.service';
+import { WahaNotificationService } from '../notifications/waha-notification.service';
 import { SoukCategory, SoukCondition } from './dto/create-listing.dto';
 
-const mockPrisma = () => ({
-  soukListing: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    count: jest.fn(),
-    findUnique: jest.fn(),
-    update: jest.fn(),
-  },
-  soukOffer: {
-    create: jest.fn(),
-    findUnique: jest.fn(),
-    findMany: jest.fn(),
-    update: jest.fn(),
-  },
-  soukHandover: {
-    create: jest.fn(),
-    findUnique: jest.fn(),
-    update: jest.fn(),
-  },
-  soukRating: {
-    create: jest.fn(),
-  },
-  soukFavorite: {
-    upsert: jest.fn(),
-    delete: jest.fn(),
-    findMany: jest.fn(),
-  },
-  soukSafeMeetSpot: {
-    findMany: jest.fn(),
-  },
-  globalUser: {
-    findUnique: jest.fn(),
-  },
-  $queryRawUnsafe: jest.fn(),
-});
+const mockPrisma = () => {
+  const prisma = {
+    soukListing: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    soukOffer: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      findFirst: jest.fn().mockResolvedValue(null), // default: no dup PENDING (R-08)
+      findMany: jest.fn().mockResolvedValue([]),    // default: no siblings to cascade (R-01)
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    soukHandover: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    soukRating: {
+      create: jest.fn(),
+    },
+    soukFavorite: {
+      upsert: jest.fn(),
+      delete: jest.fn(),
+      findMany: jest.fn(),
+    },
+    soukSafeMeetSpot: {
+      findMany: jest.fn(),
+    },
+    globalUser: {
+      findUnique: jest.fn(),
+    },
+    $queryRawUnsafe: jest.fn(),
+    // R-01 + R-08 wrap state changes in $transaction. The unit-test mock
+    // resolves the callback with the same prisma instance so every tx.soukX.*
+    // call lands on the mocked methods above.
+    $transaction: jest.fn(),
+  };
+  // Self-reference: inject the same mock as the transaction client.
+  (prisma.$transaction as jest.Mock).mockImplementation(
+    (fn: (tx: typeof prisma) => unknown) => Promise.resolve(fn(prisma)),
+  );
+  return prisma;
+};
 
 const mockEvents = () => ({ emit: jest.fn() });
 const mockTokens = () => ({ spend: jest.fn(), credit: jest.fn() });
@@ -53,6 +68,15 @@ const mockReports = () => ({ file: jest.fn() });
 const mockStorage = () => ({
   isConfigured: jest.fn(() => true),
   presignUpload: jest.fn(),
+  // R-11 F-12: createListing derives photo URL via this helper. Default:
+  // null so callers fall back to the local-upload path.
+  publicUrlForKey: jest.fn((key: string) => `https://r2-test.example/${key}`),
+});
+const mockWaha = () => ({
+  // The service only calls sendOfferNotification (via the private notifyAsync
+  // helper). Return a resolved promise so the fire-and-forget pattern stays
+  // clean in tests.
+  sendOfferNotification: jest.fn().mockResolvedValue(undefined),
 });
 
 describe('SoukElKantoService', () => {
@@ -69,6 +93,7 @@ describe('SoukElKantoService', () => {
         { provide: ConfigService, useFactory: mockConfig },
         { provide: ReportsService, useFactory: mockReports },
         { provide: R2StorageService, useFactory: mockStorage },
+        { provide: WahaNotificationService, useFactory: mockWaha },
       ],
     }).compile();
 
@@ -77,6 +102,9 @@ describe('SoukElKantoService', () => {
   });
 
   describe('createListing', () => {
+    // R-11 F-12: r2Key must start with `uploads/<sellerId>/` — the prefix is
+    // enforced by the service before the DB write. Tests now use the correct
+    // shape.
     const baseDto = {
       title: 'IKEA Crib',
       description: 'Like new',
@@ -84,7 +112,7 @@ describe('SoukElKantoService', () => {
       condition: SoukCondition.LIKE_NEW,
       askingPrice: 1800,
       district: 'B5',
-      photos: [{ r2Key: 'u-1/a.jpg', position: 0 }],
+      photos: [{ r2Key: 'uploads/u1/2026-06-12/abc.jpg', position: 0 }],
     };
 
     it('should create a listing with photos when seller trust is above threshold', async () => {
@@ -137,6 +165,9 @@ describe('SoukElKantoService', () => {
 
   describe('acceptOffer', () => {
     it('should accept a pending offer', async () => {
+      // R-01 added a listing.status === 'ACTIVE' precondition + a sibling
+      // cascade in a $transaction. The mock has to surface listing.status
+      // and findMany must return [] (no siblings) so the happy path completes.
       prisma.soukOffer.findUnique.mockResolvedValue({
         id: 'o1',
         sellerId: 's1',
@@ -144,7 +175,9 @@ describe('SoukElKantoService', () => {
         listingId: 'l1',
         status: 'PENDING',
         tokenHoldAmount: null,
+        listing: { id: 'l1', title: 'Crib', status: 'ACTIVE' },
       });
+      prisma.soukOffer.findMany.mockResolvedValue([]);
       prisma.soukOffer.update.mockResolvedValue({ id: 'o1', status: 'ACCEPTED' });
       prisma.soukListing.update.mockResolvedValue({ id: 'l1', status: 'RESERVED' });
 

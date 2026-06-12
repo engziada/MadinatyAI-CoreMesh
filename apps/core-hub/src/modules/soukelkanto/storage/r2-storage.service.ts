@@ -57,6 +57,18 @@ export class R2StorageService {
     this.publicBase = publicBase ?? '';
     this.localBaseUrl = config.get<string>('corsOrigins')?.[0]?.replace(/\/$/, '') ?? '';
 
+    // Dev override: forcibly skip R2 even when credentials are present. Useful
+    // when R2 CORS isn't configured for localhost. Forbidden in production —
+    // F-02 hardening already refuses local uploads when NODE_ENV=production.
+    const forceLocal = config.get<boolean>('r2.forceLocal') === true;
+    if (forceLocal) {
+      this.client = null;
+      this.logger.warn(
+        'R2_FORCE_LOCAL=true — bypassing R2 client, using local disk fallback.',
+      );
+      return;
+    }
+
     if (!endpoint || !accessKeyId || !secret || !bucket || !publicBase) {
       this.client = null;
       this.logger.warn(
@@ -77,6 +89,23 @@ export class R2StorageService {
   /** True when R2 credentials are present and the SDK client is ready. */
   isConfigured(): boolean {
     return this.client !== null;
+  }
+
+  /**
+   * R-11 F-12 — derive the canonical public URL for a given r2Key without
+   * trusting any client-supplied value. Returns null if the bucket has no
+   * configured `publicBase` (the FE then falls back to the local-upload URL
+   * pattern in dev).
+   */
+  publicUrlForKey(key: string): string | null {
+    // When the R2 client is disabled (force-local or unconfigured), files live
+    // on local disk — return null so the caller falls back to the
+    // `/api/v1/uploads/<key>` path served by the upload middleware. Returning
+    // the R2 publicBase here would 404 because the file was never uploaded
+    // to R2 in the first place.
+    if (!this.client) return null;
+    if (!this.publicBase) return null;
+    return `${this.publicBase.replace(/\/$/, '')}/${key}`;
   }
 
   /**

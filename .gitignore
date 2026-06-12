@@ -28,8 +28,8 @@ logs/
 *.log
 npm-debug.log*
 
-# KYC encrypted media (local volume, MVP)
-storage/kyc/
+# Local upload + KYC volume (dev fallback when R2 not configured)
+storage/
 
 # Editor / OS
 .DS_Store

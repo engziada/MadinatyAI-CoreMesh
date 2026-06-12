@@ -1,0 +1,95 @@
+# docker-compose.prod.yml — self-hosted CoreMesh stack.
+#
+# Use when you don't want Fly.io (e.g. testing in an isolated VM, on-prem
+# pilot, or staging on a Hetzner box). Production deployments to Fly use
+# fly.toml + managed Supabase Postgres + managed Upstash Redis instead.
+#
+# Required env vars (set in a .env file alongside this compose, or in shell):
+#   POSTGRES_PASSWORD, JWT_SECRET, KYC_ENCRYPTION_KEY,
+#   KANTO_R2_* (if R2 is used), WAHA_* (if WhatsApp is wired).
+#
+# Boot:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Tear down (preserves volumes):
+#   docker compose -f docker-compose.prod.yml down
+#
+# Nuke including volumes:
+#   docker compose -f docker-compose.prod.yml down -v
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: madinaty
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: madinatyai
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U madinaty -d madinatyai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Only expose internally — the core-hub talks to it via the compose
+    # network, NOT via host:5432. No `ports:` block on purpose.
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  core-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BE_GIT_SHA: ${BE_GIT_SHA:-unknown}
+        BE_BUILD_TIME: ${BE_BUILD_TIME:-unknown}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://madinaty:${POSTGRES_PASSWORD}@postgres:5432/madinatyai?schema=core
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ""
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      KYC_ENCRYPTION_KEY: ${KYC_ENCRYPTION_KEY:?KYC_ENCRYPTION_KEY is required}
+      AUTH_DEV_BYPASS: "false"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:-madinatyai.com}
+      # R2 — optional; leave blank to disable photo uploads.
+      KANTO_R2_ENDPOINT: ${KANTO_R2_ENDPOINT:-}
+      KANTO_R2_ACCESS_KEY_ID: ${KANTO_R2_ACCESS_KEY_ID:-}
+      KANTO_R2_SECRET: ${KANTO_R2_SECRET:-}
+      KANTO_R2_BUCKET: ${KANTO_R2_BUCKET:-}
+      KANTO_R2_PUBLIC_BASE: ${KANTO_R2_PUBLIC_BASE:-}
+      KANTO_R2_REGION: auto
+      KANTO_R2_PRESIGN_TTL_SECONDS: "300"
+      # WAHA — optional; blank values disable WhatsApp delivery.
+      WAHA_BASE_URL: ${WAHA_BASE_URL:-}
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      WAHA_SESSION: ${WAHA_SESSION:-default}
+    ports:
+      - "3000:3000"
+    volumes:
+      - kyc_storage:/data/kyc
+
+volumes:
+  pg_data:
+  redis_data:
+  kyc_storage:

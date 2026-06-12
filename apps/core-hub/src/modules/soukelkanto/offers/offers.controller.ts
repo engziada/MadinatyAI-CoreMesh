@@ -52,6 +52,38 @@ export class OffersController {
     return this.souk.withdrawOffer(id, user.id);
   }
 
+  // ── R-02 · Buyer-side counter actions ──────────────────────────────
+  //
+  // These mirror /accept, /decline, /counter but require that the caller is
+  // the offer's buyer AND that the offer is a seller-initiated counter
+  // (parentOfferId !== null). Service-layer guards enforce both.
+
+  @Patch(':id/buyer-accept')
+  @AuditAction({ action: 'souk.offer.buyerAccept', target: 'offer' })
+  buyerAccept(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.souk.buyerAcceptCounter(id, user.id);
+  }
+
+  @Patch(':id/buyer-decline')
+  @AuditAction({ action: 'souk.offer.buyerDecline', target: 'offer' })
+  buyerDecline(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: DeclineOfferDto,
+  ) {
+    return this.souk.buyerDeclineCounter(id, user.id, dto.reason);
+  }
+
+  @Patch(':id/buyer-counter')
+  @AuditAction({ action: 'souk.offer.buyerCounter', target: 'offer' })
+  buyerCounter(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CounterOfferDto,
+  ) {
+    return this.souk.buyerCounterOffer(id, user.id, dto.amount);
+  }
+
   @Get('sent')
   sent(@CurrentUser() user: AuthenticatedUser) {
     return this.souk.listSentOffers(user.id);

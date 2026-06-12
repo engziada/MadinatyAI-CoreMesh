@@ -48,6 +48,11 @@ class ListingPhotoDto {
   @Min(0)
   position!: number;
 
+  // R-11 F-12: `url` is intentionally NOT accepted from the client. The
+  // service derives the canonical URL from r2Key + KANTO_R2_PUBLIC_BASE so
+  // an attacker can't reference someone else's photo or an off-host asset.
+  // Kept as an optional field on the type to keep older clients compatible
+  // — the value, if sent, is overwritten server-side.
   @IsOptional()
   @IsString()
   @MaxLength(512)

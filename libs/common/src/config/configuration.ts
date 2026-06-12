@@ -1,4 +1,4 @@
-import { Env } from './env.validation';
+import { envSchema } from './env.validation';
 
 /**
  * Strongly-typed, namespaced configuration object derived from validated env.
@@ -6,7 +6,7 @@ import { Env } from './env.validation';
  * `ConfigService` and read `config.get('ai.ollamaBaseUrl')`, etc.
  */
 export const configuration = () => {
-  const env = process.env as unknown as Env;
+  const env = envSchema.parse(process.env);
   return {
     nodeEnv: env.NODE_ENV,
     port: Number(env.PORT),
@@ -48,6 +48,7 @@ export const configuration = () => {
       publicBase: env.KANTO_R2_PUBLIC_BASE,
       region: env.KANTO_R2_REGION,
       presignTtlSeconds: Number(env.KANTO_R2_PRESIGN_TTL_SECONDS),
+      forceLocal: env.KANTO_R2_FORCE_LOCAL,
     },
     auth: {
       jwtSecret: env.JWT_SECRET,

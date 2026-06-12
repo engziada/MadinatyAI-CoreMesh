@@ -8,10 +8,17 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@madinatyai/prisma';
+import { RateLimitError } from '@madinatyai/gateway';
 import {
   OTP_DELIVERY_PROVIDER,
   type OtpDeliveryProvider,
 } from './providers/otp-delivery.provider';
+
+// R-11 F-17 — per-phone OTP issuance throttle thresholds. Backed by counting
+// rows in `core.OtpChallenge` so we don't require Redis for v1. Move to
+// Redis-backed sliding-window counter when the table grows past ~1M rows.
+const OTP_PER_PHONE_MIN_GAP_SECONDS = 60; // 1-per-minute
+const OTP_PER_PHONE_HOURLY_CAP = 5;       // 5-per-hour
 
 /**
  * Manages the lifecycle of phone-based one-time passwords:
@@ -38,8 +45,14 @@ export class OtpService {
    * Issue a fresh OTP for `phoneNumber` and dispatch it.
    * Invalidates any prior, still-pending challenge for the same phone
    * to prevent two concurrent codes racing.
+   *
+   * R-11 F-17 — per-phone throttle: max 1 OTP per 60s, max 5 OTPs per hour.
+   * Counts rows already in `core.OtpChallenge`. Returns 429 RateLimitError
+   * with a Retry-After hint when exceeded.
    */
   async issue(phoneNumber: string, purpose: 'LOGIN' | 'REGISTER'): Promise<void> {
+    await this.enforcePerPhoneThrottle(phoneNumber);
+
     const ttlSeconds = this.config.get<number>('auth.otpTtlSeconds') ?? 300;
     const code = this.generateCode();
     const codeHash = this.hash(phoneNumber, code);
@@ -58,6 +71,41 @@ export class OtpService {
 
     await this.delivery.send(phoneNumber, code);
     this.logger.log(`OTP issued for ${this.maskPhone(phoneNumber)} (${purpose})`);
+  }
+
+  /**
+   * R-11 F-17 — count recent issuances for the phone and refuse if over the
+   * burst cap. Postgres-backed (cheap because the table is row-indexed on
+   * `phoneNumber`).
+   */
+  private async enforcePerPhoneThrottle(phoneNumber: string): Promise<void> {
+    const now = Date.now();
+    const minGapWindow = new Date(now - OTP_PER_PHONE_MIN_GAP_SECONDS * 1000);
+    const hourlyWindow = new Date(now - 3600 * 1000);
+
+    // Single round-trip: count rows in both windows.
+    const [recentBurst, hourly] = await Promise.all([
+      this.prisma.otpChallenge.count({
+        where: { phoneNumber, createdAt: { gt: minGapWindow } },
+      }),
+      this.prisma.otpChallenge.count({
+        where: { phoneNumber, createdAt: { gt: hourlyWindow } },
+      }),
+    ]);
+
+    if (recentBurst > 0) {
+      this.logger.warn(
+        `OTP burst-throttle hit for ${this.maskPhone(phoneNumber)}`,
+      );
+      throw new RateLimitError(OTP_PER_PHONE_MIN_GAP_SECONDS);
+    }
+    if (hourly >= OTP_PER_PHONE_HOURLY_CAP) {
+      this.logger.warn(
+        `OTP hourly-cap hit for ${this.maskPhone(phoneNumber)} (${hourly} in last hour)`,
+      );
+      // Retry-after = remaining seconds until the oldest hourly request ages out.
+      throw new RateLimitError(3600);
+    }
   }
 
   /**

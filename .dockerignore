@@ -1,13 +1,60 @@
-node_modules
+# Build artifacts (rebuilt inside the image)
 dist
-.git
-.github
-coverage
+build
+.next
 .nx
-storage
-*.log
+
+# Dependencies (re-installed inside the image)
+node_modules
+**/node_modules
+
+# Environment + secrets — NEVER bake into the image
 .env
 .env.*
 !.env.example
-graphify-out
+
+# OS / IDE noise
+.DS_Store
+.vscode
+.idea
+*.swp
+*.swo
+Thumbs.db
+
+# Git
+.git
+.gitignore
+.gitattributes
+.github
+
+# Tests + their artifacts (the image runs prod, not tests)
+**/*.spec.ts
+**/*.test.ts
+coverage
+.nyc_output
+
+# Local KYC uploads + photo cache — not for the runtime image
+storage
+.data
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docs (not needed at runtime)
 docs
+README.md
+graphify-out
+
+# Local dev tooling
+.eslintcache
+.prettierignore
+prettier.config.*
+.editorconfig
+
+# Sibling workspaces never needed inside this image
+../SoukElkanto
+../Platform

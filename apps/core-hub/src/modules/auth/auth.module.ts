@@ -5,6 +5,7 @@ import { PrismaModule } from '@madinatyai/prisma';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { OtpService } from './otp.service';
+import { JtiDenyListService } from './jti-deny-list.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import {
   OTP_DELIVERY_PROVIDER,
@@ -43,6 +44,7 @@ import { WahaOtpDeliveryProvider } from './providers/waha-otp.provider';
   providers: [
     AuthService,
     OtpService,
+    JtiDenyListService,
     JwtAuthGuard,
     DevOtpDeliveryProvider,
     StubSmsOtpDeliveryProvider,
@@ -70,6 +72,6 @@ import { WahaOtpDeliveryProvider } from './providers/waha-otp.provider';
       },
     },
   ],
-  exports: [AuthService, JwtAuthGuard, JwtModule],
+  exports: [AuthService, JwtAuthGuard, JtiDenyListService, JwtModule],
 })
 export class AuthModule {}
