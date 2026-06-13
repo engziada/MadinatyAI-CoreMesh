@@ -16,6 +16,13 @@ export const envSchema = z.object({
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.coerce.number().int().positive().default(6379),
   REDIS_PASSWORD: z.string().optional().default(''),
+  // Required for managed Upstash / ElastiCache TLS endpoints. Local Docker
+  // Redis on dev never uses it. Accepts the literal strings "true"/"false"
+  // from .env-style files in addition to booleans.
+  REDIS_TLS: z
+    .union([z.literal('true'), z.literal('false'), z.boolean()])
+    .transform((v) => v === true || v === 'true')
+    .default(false),
 
   OLLAMA_BASE_URL: z.string().url().default('http://localhost:11434'),
   OLLAMA_MODEL: z.string().default('llama3:8b'),

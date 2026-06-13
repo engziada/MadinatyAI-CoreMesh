@@ -19,6 +19,10 @@ import { EventsService } from './events.service';
           host: config.get<string>('redis.host'),
           port: config.get<number>('redis.port'),
           password: config.get<string>('redis.password') || undefined,
+          // Upstash + managed Redis endpoints require TLS. Empty options
+          // enable it with default cert validation. Local dev Docker Redis
+          // stays plain (REDIS_TLS unset/false).
+          ...(config.get<boolean>('redis.tls') ? { tls: {} } : {}),
         },
       }),
     }),

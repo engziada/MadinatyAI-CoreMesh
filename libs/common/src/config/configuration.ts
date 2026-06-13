@@ -22,6 +22,7 @@ export const configuration = () => {
       host: env.REDIS_HOST,
       port: Number(env.REDIS_PORT),
       password: env.REDIS_PASSWORD || undefined,
+      tls: env.REDIS_TLS,
     },
     ai: {
       ollamaBaseUrl: env.OLLAMA_BASE_URL,
