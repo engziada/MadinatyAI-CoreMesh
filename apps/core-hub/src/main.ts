@@ -144,8 +144,11 @@ async function bootstrap(): Promise<void> {
   }
 
   const port = config.get<number>('port') ?? 3000;
-  await app.listen(port);
-  new Logger('Bootstrap').log(`MadinatyAI Hub listening on http://localhost:${port}/api/v1`);
+  // Bind to 0.0.0.0 so fly-proxy + container orchestrators can reach the app.
+  // Default NestJS app.listen(port) binds to 127.0.0.1/localhost, which is
+  // invisible from outside the container's network namespace.
+  await app.listen(port, '0.0.0.0');
+  new Logger('Bootstrap').log(`MadinatyAI Hub listening on http://0.0.0.0:${port}/api/v1`);
 }
 
 bootstrap();
