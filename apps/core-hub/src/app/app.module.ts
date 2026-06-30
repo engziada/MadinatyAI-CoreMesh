@@ -22,6 +22,7 @@ import { TenantItemsService } from '../modules/tenant/tenant-items.service';
 import { TokensController } from '../modules/tokens/tokens.controller';
 import { BusinessController } from '../modules/business/business.controller';
 import { SoukElKantoModule } from '../modules/soukelkanto/soukelkanto.module';
+import { AstroModule } from '../modules/astro/astro.module';
 import { AuthModule } from '../modules/auth/auth.module';
 import { JwtAuthGuard } from '../modules/auth/guards/jwt-auth.guard';
 
@@ -62,6 +63,7 @@ import { JwtAuthGuard } from '../modules/auth/guards/jwt-auth.guard';
     ReportsModule,
     TrustMeterModule,
     SoukElKantoModule,
+    AstroModule,
   ],
   controllers: [
     HealthController,

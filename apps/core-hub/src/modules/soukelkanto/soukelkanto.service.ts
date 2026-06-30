@@ -690,6 +690,87 @@ export class SoukElKantoService {
     return updated;
   }
 
+  /** Buyer edits the amount and/or note on their own PENDING offer. */
+  async updateOffer(
+    offerId: string,
+    buyerId: string,
+    dto: { amount?: number; note?: string },
+  ) {
+    const offer = await this.prisma.soukOffer.findUnique({
+      where: { id: offerId },
+      include: { listing: true },
+    });
+    if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
+    if (offer.buyerId !== buyerId) throw new ForbiddenException('Not the buyer');
+    if (offer.status !== 'PENDING') {
+      throw new ForbiddenException(
+        `Offer cannot be edited (status is ${offer.status})`,
+      );
+    }
+
+    const data: { amount?: number; note?: string } = {};
+    if (dto.amount !== undefined) {
+      this.assertAmountInBand(dto.amount, offer.listing.askingPrice);
+      data.amount = dto.amount;
+    }
+    if (dto.note !== undefined) {
+      data.note = dto.note?.trim() || undefined;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return offer; // nothing to update
+    }
+
+    const updated = await this.prisma.soukOffer.update({
+      where: { id: offerId },
+      data,
+    });
+
+    this.logger.log(`Offer ${offerId} updated by buyer ${buyerId}`);
+    return updated;
+  }
+
+  /** Returns the full chain of offers linked by parentOfferId (root → leaf). */
+  async getOfferChain(offerId: string) {
+    // Walk up to the root offer (the one without a parentOfferId).
+    const visited = new Set<string>();
+    let rootId = offerId;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (visited.has(rootId)) break; // cycle guard
+      visited.add(rootId);
+      const current = await this.prisma.soukOffer.findUnique({
+        where: { id: rootId },
+        select: { id: true, parentOfferId: true },
+      });
+      if (!current || !current.parentOfferId) break;
+      rootId = current.parentOfferId;
+    }
+
+    // Fetch the root with listing, then walk down the chain collecting children.
+    const root = await this.prisma.soukOffer.findUnique({
+      where: { id: rootId },
+      include: { listing: true },
+    });
+    if (!root) throw new NotFoundException(`Offer ${offerId} not found`);
+
+    const chain: Array<typeof root> = [root];
+    let cursor = root;
+    while (true) {
+      const child = await this.prisma.soukOffer.findFirst({
+        where: { parentOfferId: cursor.id },
+        include: { listing: true },
+      });
+      if (!child) break;
+      if (visited.has(child.id)) break; // cycle guard
+      visited.add(child.id);
+      chain.push(child);
+      cursor = child;
+    }
+
+    return chain;
+  }
+
   // ───────────── R-02 · Buyer-side counter-offer actions ─────────────
   //
   // When the seller counters, BE creates a child SoukOffer with parentOfferId
@@ -986,9 +1067,13 @@ export class SoukElKantoService {
     const min = Math.ceil(askingPrice * OFFER_MIN_RATIO);
     const max = Math.floor(askingPrice * OFFER_MAX_RATIO);
     if (amount < min || amount > max) {
-      throw new BadRequestException(
-        `OFFER_OUT_OF_BAND: amount must be between ${min} and ${max} (50%-150% of the asking price ${askingPrice}).`,
-      );
+      throw new BadRequestException({
+        message: 'OFFER_OUT_OF_BAND',
+        code: 'OFFER_OUT_OF_BAND',
+        min,
+        max,
+        askingPrice,
+      });
     }
   }
 

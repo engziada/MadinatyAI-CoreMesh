@@ -32,3 +32,15 @@ export class DeclineOfferDto {
   @MaxLength(500)
   reason?: string;
 }
+
+export class UpdateOfferDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  amount?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}

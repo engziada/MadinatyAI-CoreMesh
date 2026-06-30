@@ -5,7 +5,7 @@ import { TenantGuard } from '@madinatyai/tenancy';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/types/authenticated-user';
 import { SoukElKantoService } from '../soukelkanto.service';
-import { CounterOfferDto, CreateOfferDto, DeclineOfferDto } from '../dto/create-offer.dto';
+import { CounterOfferDto, CreateOfferDto, DeclineOfferDto, UpdateOfferDto } from '../dto/create-offer.dto';
 import { CancelOfferDto } from '../dto/cancel-offer.dto';
 
 @ApiTags('Souk ElKanto — Offers')
@@ -51,6 +51,23 @@ export class OffersController {
   @AuditAction({ action: 'souk.offer.withdraw', target: 'offer' })
   withdraw(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.souk.withdrawOffer(id, user.id);
+  }
+
+  /** Buyer edits the amount and/or note on their own PENDING offer. */
+  @Patch(':id')
+  @AuditAction({ action: 'souk.offer.update', target: 'offer' })
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateOfferDto,
+  ) {
+    return this.souk.updateOffer(id, user.id, dto);
+  }
+
+  /** Returns the full chain of offers (root → leaf) for the timeline UI. */
+  @Get(':id/chain')
+  chain(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.souk.getOfferChain(id);
   }
 
   // ── R-02 · Buyer-side counter actions ──────────────────────────────
