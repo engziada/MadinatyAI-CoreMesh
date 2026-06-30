@@ -24,4 +24,4 @@ CREATE INDEX "push_device_tokens_appSlug_idx" ON "core"."push_device_tokens"("ap
 -- AddForeignKey
 ALTER TABLE "core"."push_device_tokens"
 ADD CONSTRAINT "push_device_tokens_userId_fkey"
-FOREIGN KEY ("userId") REFERENCES "core"."global_users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+FOREIGN KEY ("userId") REFERENCES "core"."GlobalUser"("id") ON DELETE CASCADE ON UPDATE CASCADE;
