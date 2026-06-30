@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '@madinatyai/prisma';
 import { AiRouterModule } from '@madinatyai/ai-router';
 import { TokensModule } from '@madinatyai/tokens';
-import { EventsModule } from '@madinatyai/events';
 import { ReportsModule } from '../reports/reports.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SoukElKantoService } from './soukelkanto.service';
@@ -27,7 +26,7 @@ import { ContactUsController } from './contact-us/contact-us.controller';
  * `tenant_soukelkanto` schema.
  */
 @Module({
-  imports: [PrismaModule, AiRouterModule, TokensModule, EventsModule, ReportsModule, NotificationsModule],
+  imports: [PrismaModule, AiRouterModule, TokensModule, ReportsModule, NotificationsModule],
   providers: [SoukElKantoService, R2StorageService, SoukAiSuggestService],
   controllers: [
     ListingsController,

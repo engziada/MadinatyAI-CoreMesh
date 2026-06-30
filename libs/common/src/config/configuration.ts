@@ -65,6 +65,7 @@ export const configuration = () => {
       session: env.WAHA_SESSION,
     },
     soukSupportPhone: env.SOUK_SUPPORT_PHONE,
+    eventsEnabled: env.EVENTS_ENABLED,
   };
 };
 

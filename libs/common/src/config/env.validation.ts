@@ -103,6 +103,15 @@ export const envSchema = z.object({
   // Phone number to receive Contact-Us messages via WAHA.
   // Leave blank to disable the feature.
   SOUK_SUPPORT_PHONE: z.string().optional().default(''),
+
+  // ── Events Queue (BullMQ / Redis) ────────────────────────────
+  // Set to false to disable the BullMQ events queue and worker.
+  // Use this on managed Redis with command limits (e.g. Upstash free tier).
+  EVENTS_ENABLED: z
+    .string()
+    .optional()
+    .default('true')
+    .transform((v) => v !== 'false'),
 });
 
 export type Env = z.infer<typeof envSchema>;

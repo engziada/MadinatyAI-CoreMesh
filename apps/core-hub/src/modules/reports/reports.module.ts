@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '@madinatyai/prisma';
-import { EventsModule } from '@madinatyai/events';
 import { TrustScoreModule } from '@madinatyai/trust-score';
 import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
@@ -11,7 +10,7 @@ import { ReportsService } from './reports.service';
  * the public POST /reports route.
  */
 @Module({
-  imports: [PrismaModule, EventsModule, TrustScoreModule],
+  imports: [PrismaModule, TrustScoreModule],
   controllers: [ReportsController],
   providers: [ReportsService],
   exports: [ReportsService],

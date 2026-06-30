@@ -53,7 +53,9 @@ import { JwtAuthGuard } from '../modules/auth/guards/jwt-auth.guard';
     AiRouterModule,
     KycModule,
     TrustScoreModule,
-    EventsModule,
+    process.env.EVENTS_ENABLED === 'false'
+      ? EventsModule.forRootDisabled()
+      : EventsModule.forRoot(),
     TokensModule,
     BusinessModule,
     AuthModule,
