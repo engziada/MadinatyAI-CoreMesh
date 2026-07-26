@@ -14,10 +14,12 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuditAction } from '@madinatyai/gateway';
 import { BusinessService } from '@madinatyai/business';
 import { TenantContextService } from '@madinatyai/prisma';
-import type {
+import {
   CreateBusinessDto,
   UpdateBrandingDto,
   UpdateBusinessProfileDto,
+  CreateMenuItemDto,
+  UpdateMenuItemDto,
 } from '@madinatyai/business';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
@@ -89,6 +91,20 @@ export class BusinessController {
     return this.business.createBusiness(this.getTenant(), user.id, dto);
   }
 
+  @Get('my-kitchen')
+  async getMyKitchen(@CurrentUser() user: AuthenticatedUser) {
+    return this.business.getBusinessByOwner(this.getTenant(), user.id);
+  }
+
+  @Get('my-menu')
+  async getMyMenu(@CurrentUser() user: AuthenticatedUser) {
+    const biz = await this.business.getBusinessByOwner(this.getTenant(), user.id);
+    if (!biz) {
+      throw new ForbiddenException('No kitchen business found for this account.');
+    }
+    return this.business.getMenuItems(biz.id as string);
+  }
+
   @Get(':slug')
   getBySlug(@Param('slug') slug: string) {
     return this.business.getBusiness(this.getTenant(), slug);
@@ -130,5 +146,46 @@ export class BusinessController {
   ) {
     await this.assertOwner(this.getTenant(), id, user.id);
     return this.business.deactivateBusiness(this.getTenant(), id);
+  }
+
+  @Post('my-menu')
+  @AuditAction({ action: 'business.createMenuItem', target: 'menuItem' })
+  async createMyMenuItem(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateMenuItemDto,
+  ) {
+    const biz = await this.business.getBusinessByOwner(this.getTenant(), user.id);
+    if (!biz) {
+      throw new ForbiddenException('No kitchen business found for this account.');
+    }
+    return this.business.createMenuItem(biz.id as string, dto);
+  }
+
+  @Patch('my-menu/:itemId')
+  @AuditAction({ action: 'business.updateMenuItem', target: 'menuItem' })
+  async updateMyMenuItem(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId') itemId: string,
+    @Body() dto: UpdateMenuItemDto,
+  ) {
+    const biz = await this.business.getBusinessByOwner(this.getTenant(), user.id);
+    if (!biz) {
+      throw new ForbiddenException('No kitchen business found for this account.');
+    }
+    return this.business.updateMenuItem(biz.id as string, itemId, dto);
+  }
+
+  @Delete('my-menu/:itemId')
+  @HttpCode(204)
+  @AuditAction({ action: 'business.deleteMenuItem', target: 'menuItem' })
+  async deleteMyMenuItem(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('itemId') itemId: string,
+  ) {
+    const biz = await this.business.getBusinessByOwner(this.getTenant(), user.id);
+    if (!biz) {
+      throw new ForbiddenException('No kitchen business found for this account.');
+    }
+    await this.business.deleteMenuItem(biz.id as string, itemId);
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@madinatyai/prisma';
 import { BusinessNotFoundException, DuplicateSlugException } from './exceptions';
-import type { CreateBusinessDto, UpdateBrandingDto, UpdateBusinessProfileDto } from './dto';
+import type { CreateBusinessDto, UpdateBrandingDto, UpdateBusinessProfileDto, CreateMenuItemDto, UpdateMenuItemDto } from './dto';
 
 /** Supported tenant schemas that have a Business sub-model. */
 const BUSINESS_SCHEMAS = {
@@ -59,6 +59,10 @@ export class BusinessService {
       address: dto.address,
       phone: dto.phone,
     };
+
+    if (dto.openingHours) {
+      data.openingHours = dto.openingHours;
+    }
 
     // Kitchen-specific fields
     if (tenant === 'kitchen') {
@@ -163,6 +167,7 @@ export class BusinessService {
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.address !== undefined) data.address = dto.address;
     if (dto.phone !== undefined) data.phone = dto.phone;
+    if (dto.openingHours !== undefined) data.openingHours = dto.openingHours;
 
     if (tenant === 'kitchen' && dto.cuisineType !== undefined) {
       data.cuisineType = dto.cuisineType;
@@ -199,5 +204,86 @@ export class BusinessService {
     );
     if (!business) throw new BusinessNotFoundException(businessId);
     return business as Record<string, unknown>;
+  }
+
+  /** Retrieve a business owned by a specific user. */
+  async getBusinessByOwner(
+    tenant: BusinessTenant,
+    ownerId: string,
+  ): Promise<Record<string, unknown> | null> {
+    const config = BUSINESS_SCHEMAS[tenant];
+    if (!config) throw new Error(`Tenant ${tenant} does not support business sub-tenancy`);
+
+    const schemaName = `tenant_${tenant}`;
+    const business = await this.prisma.withTenantSchema(schemaName, (tx) =>
+      getDelegate(tx, config.table).findFirst({
+        where: { ownerGlobalUserId: ownerId },
+        include: tenant === 'kitchen' ? { menuItems: { orderBy: { createdAt: 'desc' } } } : undefined,
+      }),
+    );
+    return business as Record<string, unknown> | null;
+  }
+
+  /** Get all menu items for a kitchen business. */
+  async getMenuItems(businessId: string): Promise<Record<string, unknown>[]> {
+    const schemaName = 'tenant_kitchen';
+    return this.prisma.withTenantSchema(schemaName, (tx) =>
+      tx.kitchenMenuItem.findMany({
+        where: { businessId },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ) as Promise<Record<string, unknown>[]>;
+  }
+
+  /** Create a new menu item for a kitchen business. */
+  async createMenuItem(businessId: string, dto: CreateMenuItemDto): Promise<Record<string, unknown>> {
+    const schemaName = 'tenant_kitchen';
+    return this.prisma.withTenantSchema(schemaName, (tx) =>
+      tx.kitchenMenuItem.create({
+        data: {
+          businessId,
+          title: dto.title,
+          description: dto.description,
+          price: dto.price,
+          category: dto.category,
+          imageUrl: dto.imageUrl,
+          isAvailable: dto.isAvailable ?? true,
+          scheduleType: dto.scheduleType ?? 'ALL_DAY',
+        },
+      }),
+    ) as Promise<Record<string, unknown>>;
+  }
+
+  /** Update an existing menu item. */
+  async updateMenuItem(
+    businessId: string,
+    itemId: string,
+    dto: UpdateMenuItemDto,
+  ): Promise<Record<string, unknown>> {
+    const schemaName = 'tenant_kitchen';
+    return this.prisma.withTenantSchema(schemaName, (tx) =>
+      tx.kitchenMenuItem.update({
+        where: { id: itemId, businessId },
+        data: {
+          title: dto.title,
+          description: dto.description,
+          price: dto.price,
+          category: dto.category,
+          imageUrl: dto.imageUrl,
+          isAvailable: dto.isAvailable,
+          scheduleType: dto.scheduleType,
+        },
+      }),
+    ) as Promise<Record<string, unknown>>;
+  }
+
+  /** Delete a menu item. */
+  async deleteMenuItem(businessId: string, itemId: string): Promise<Record<string, unknown>> {
+    const schemaName = 'tenant_kitchen';
+    return this.prisma.withTenantSchema(schemaName, (tx) =>
+      tx.kitchenMenuItem.delete({
+        where: { id: itemId, businessId },
+      }),
+    ) as Promise<Record<string, unknown>>;
   }
 }

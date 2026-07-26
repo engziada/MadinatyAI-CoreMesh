@@ -21,10 +21,14 @@ import { TenantController } from '../modules/tenant/tenant.controller';
 import { TenantItemsService } from '../modules/tenant/tenant-items.service';
 import { TokensController } from '../modules/tokens/tokens.controller';
 import { BusinessController } from '../modules/business/business.controller';
+import { KitchenPortalController } from '../modules/business/kitchen-portal.controller';
 import { SoukElKantoModule } from '../modules/soukelkanto/soukelkanto.module';
 import { AstroModule } from '../modules/astro/astro.module';
 import { AuthModule } from '../modules/auth/auth.module';
 import { JwtAuthGuard } from '../modules/auth/guards/jwt-auth.guard';
+import { AdminModule } from '../modules/admin/admin.module';
+import { LifeModule } from '../modules/life/life.module';
+import { ExpressModule } from '../modules/express/express.module';
 
 /**
  * Root module wiring the shared core (config, Prisma, tenancy) with the
@@ -64,6 +68,9 @@ import { JwtAuthGuard } from '../modules/auth/guards/jwt-auth.guard';
     TrustMeterModule,
     SoukElKantoModule,
     AstroModule,
+    AdminModule,
+    LifeModule,
+    ExpressModule,
   ],
   controllers: [
     HealthController,
@@ -73,6 +80,7 @@ import { JwtAuthGuard } from '../modules/auth/guards/jwt-auth.guard';
     TenantController,
     TokensController,
     BusinessController,
+    KitchenPortalController,
   ],
   providers: [
     TenantItemsService,

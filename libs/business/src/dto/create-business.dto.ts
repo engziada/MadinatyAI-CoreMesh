@@ -41,4 +41,7 @@ export class CreateBusinessDto {
 
   @IsOptional()
   phone?: string;
+
+  @IsOptional()
+  openingHours?: Record<string, unknown>;
 }

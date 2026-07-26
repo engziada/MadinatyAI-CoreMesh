@@ -76,7 +76,7 @@ async function bootstrap(): Promise<void> {
 
   // Gateway: /api/v1 prefix on every route — exclude docs paths so they don't get envelope-wrapped
   app.setGlobalPrefix('api/v1', {
-    exclude: ['docs', 'docs-json', 'docs-yaml', 'redoc', 'openapi.json'],
+    exclude: ['docs', 'docs-json', 'docs-yaml', 'redoc', 'openapi.json', 'admin', 'kitchen', 'express'],
   });
 
   app.useGlobalPipes(

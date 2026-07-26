@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, Length, Matches } from 'class-validator';
 
-const PHONE_REGEX = /^\+?[1-9]\d{7,14}$/;
+const PHONE_REGEX = /^(?:\+?[1-9]\d{7,14}|01\d{9})$/;
 
 export class VerifyOtpDto {
   @ApiProperty({ example: '+201001234567' })

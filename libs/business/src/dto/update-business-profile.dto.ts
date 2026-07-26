@@ -27,4 +27,7 @@ export class UpdateBusinessProfileDto {
 
   @IsOptional()
   phone?: string;
+
+  @IsOptional()
+  openingHours?: Record<string, unknown>;
 }

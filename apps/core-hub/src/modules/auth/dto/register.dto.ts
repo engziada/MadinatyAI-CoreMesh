@@ -5,7 +5,7 @@ import { IsString, Matches } from 'class-validator';
  * E.164-ish phone number — accepts +201xxxxxxxxxx (Egyptian mobile)
  * and a generous superset to ease seeding.
  */
-const PHONE_REGEX = /^\+?[1-9]\d{7,14}$/;
+const PHONE_REGEX = /^(?:\+?[1-9]\d{7,14}|01\d{9})$/;
 
 export class RegisterDto {
   @ApiProperty({
@@ -14,7 +14,7 @@ export class RegisterDto {
   })
   @IsString()
   @Matches(PHONE_REGEX, {
-    message: 'phoneNumber must be a valid international phone (E.164-like).',
+    message: 'phoneNumber must be a valid international or local Egyptian phone.',
   })
   phoneNumber!: string;
 }

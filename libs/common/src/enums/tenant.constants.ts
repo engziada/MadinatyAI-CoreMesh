@@ -11,4 +11,5 @@ export const TENANT_SCHEMA_MAP: Readonly<Record<string, string>> = Object.freeze
   tutor: 'tenant_tutor',
   timebank: 'tenant_timebank',
   kanto: 'tenant_soukelkanto',
+  express: 'tenant_express',
 });

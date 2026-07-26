@@ -24,10 +24,10 @@ async function main(): Promise<void> {
   }
 
   await prisma.globalUser.upsert({
-    where: { phoneNumber: '+201000000000' },
+    where: { phoneNumber: '01000000000' },
     update: {},
     create: {
-      phoneNumber: '+201000000000',
+      phoneNumber: '01000000000',
       isVerified: true,
       // Raw payment handle stored as opaque metadata (Transparent Broker).
       metadata: { instapayHandle: 'demo@instapay', vodafoneCash: '01000000000' },
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
 
   // ── Sample Kitchen businesses ──
   const sampleUser = await prisma.globalUser.findUnique({
-    where: { phoneNumber: '+201000000000' },
+    where: { phoneNumber: '01000000000' },
   });
 
   if (sampleUser) {
