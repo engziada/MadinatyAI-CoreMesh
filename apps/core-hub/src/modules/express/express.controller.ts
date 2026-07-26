@@ -3,15 +3,7 @@ import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { ExpressService } from './express.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
-
-type CourierProfileDto = {
-  name: string;
-  phone: string;
-  vehicleType: string;
-  nationalId: string;
-  nationalIdPhoto?: string;
-  personalPhoto?: string;
-};
+import { CourierProfileDto, ToggleOnlineDto, CreateDeliveryRequestDto } from './dto';
 
 @ApiTags('Express Delivery')
 @ApiBearerAuth()
@@ -59,9 +51,9 @@ export class ExpressController {
   @ApiOperation({ summary: 'Toggle online/offline status for courier' })
   toggleOnline(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { isOnline: boolean },
+    @Body() dto: ToggleOnlineDto,
   ) {
-    return this.expressService.toggleOnline(user.id, body.isOnline);
+    return this.expressService.toggleOnline(user.id, dto.isOnline);
   }
 
   /**
@@ -125,7 +117,7 @@ export class ExpressController {
   @ApiOperation({ summary: 'Kitchen creates a new delivery request' })
   createDeliveryRequest(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { deliveryPoint: string; recipientName: string; recipientPhone: string; notes?: string },
+    @Body() dto: CreateDeliveryRequestDto,
   ) {
     return this.expressService.createDeliveryRequest(user.id, dto);
   }

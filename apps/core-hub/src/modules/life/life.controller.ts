@@ -3,7 +3,17 @@ import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Roles } from '@madinatyai/common';
 import { Public } from '../auth/decorators/public.decorator';
 import { MadintyLifeService } from './life.service';
-import { LifeLocationType, LifeItemType, LifeBookingType, LifeBookingStatus } from '@prisma/client';
+import { LifeLocationType, LifeBookingType, LifeBookingStatus } from '@prisma/client';
+import {
+  CreateLocationDto,
+  UpdateLocationDto,
+  CreateLifeItemDto,
+  UpdateLifeItemDto,
+  CreateLifeBookingDto,
+  UpdateBookingStatusDto,
+  CreateLifePostDto,
+  AddLifePhotoDto,
+} from './dto';
 
 @ApiTags('Madinty Life — Locations')
 @Controller('life/locations')
@@ -40,21 +50,8 @@ export class MadintyLifeController {
   @Roles('PLATFORM_ADMIN', 'ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new location (Admin only)' })
-  create(
-    @Body()
-    body: {
-      name: string;
-      nameAr: string;
-      description?: string;
-      descriptionAr?: string;
-      latitude?: number;
-      longitude?: number;
-      parentId?: string;
-      type: LifeLocationType;
-      metadata?: any;
-    },
-  ) {
-    return this.lifeService.createLocation(body);
+  create(@Body() dto: CreateLocationDto) {
+    return this.lifeService.createLocation(dto);
   }
 
   @Patch(':id')
@@ -63,20 +60,9 @@ export class MadintyLifeController {
   @ApiOperation({ summary: 'Update an existing location (Admin only)' })
   update(
     @Param('id') id: string,
-    @Body()
-    body: {
-      name?: string;
-      nameAr?: string;
-      description?: string;
-      descriptionAr?: string;
-      latitude?: number;
-      longitude?: number;
-      parentId?: string;
-      type?: LifeLocationType;
-      metadata?: any;
-    },
+    @Body() dto: UpdateLocationDto,
   ) {
-    return this.lifeService.updateLocation(id, body);
+    return this.lifeService.updateLocation(id, dto);
   }
 
   @Delete(':id')
@@ -101,20 +87,9 @@ export class MadintyLifeController {
   @ApiOperation({ summary: 'Create a new catalog/menu item (Admin only)' })
   createItem(
     @Param('id') id: string,
-    @Body()
-    body: {
-      title: string;
-      titleAr?: string;
-      description?: string;
-      descriptionAr?: string;
-      price?: number;
-      imageUrl?: string;
-      category?: string;
-      type: LifeItemType;
-      metadata?: any;
-    },
+    @Body() dto: CreateLifeItemDto,
   ) {
-    return this.lifeService.createItem(id, body);
+    return this.lifeService.createItem(id, dto);
   }
 
   @Patch('items/:itemId')
@@ -123,21 +98,9 @@ export class MadintyLifeController {
   @ApiOperation({ summary: 'Update an existing catalog/menu item (Admin only)' })
   updateItem(
     @Param('itemId') itemId: string,
-    @Body()
-    body: {
-      title?: string;
-      titleAr?: string;
-      description?: string;
-      descriptionAr?: string;
-      price?: number;
-      imageUrl?: string;
-      category?: string;
-      isAvailable?: boolean;
-      type?: LifeItemType;
-      metadata?: any;
-    },
+    @Body() dto: UpdateLifeItemDto,
   ) {
-    return this.lifeService.updateItem(itemId, body);
+    return this.lifeService.updateItem(itemId, dto);
   }
 
   @Delete('items/:itemId')
@@ -166,17 +129,9 @@ export class MadintyLifeController {
   @ApiOperation({ summary: 'Create a booking/order for a location' })
   createBooking(
     @Param('id') id: string,
-    @Body()
-    body: {
-      customerName: string;
-      customerPhone: string;
-      dateTime?: string;
-      type: LifeBookingType;
-      notes?: string;
-      metadata?: any;
-    },
+    @Body() dto: CreateLifeBookingDto,
   ) {
-    return this.lifeService.createBooking(id, body);
+    return this.lifeService.createBooking(id, dto);
   }
 
   @Patch('bookings/:bookingId/status')
@@ -185,9 +140,9 @@ export class MadintyLifeController {
   @ApiOperation({ summary: 'Update booking status (Admin only)' })
   updateBookingStatus(
     @Param('bookingId') bookingId: string,
-    @Body() body: { status: LifeBookingStatus },
+    @Body() dto: UpdateBookingStatusDto,
   ) {
-    return this.lifeService.updateBookingStatus(bookingId, body.status);
+    return this.lifeService.updateBookingStatus(bookingId, dto.status);
   }
 
   // ── STOREFRONT POSTS ENDPOINTS ──
@@ -204,14 +159,9 @@ export class MadintyLifeController {
   @ApiOperation({ summary: 'Create a news post/promotion for a location (Admin only)' })
   createPost(
     @Param('id') id: string,
-    @Body()
-    body: {
-      title: string;
-      content: string;
-      imageUrl?: string;
-    },
+    @Body() dto: CreateLifePostDto,
   ) {
-    return this.lifeService.createPost(id, body);
+    return this.lifeService.createPost(id, dto);
   }
 
   @Delete('posts/:postId')
@@ -236,14 +186,9 @@ export class MadintyLifeController {
   @ApiOperation({ summary: 'Add a photo to gallery (Admin only)' })
   addPhoto(
     @Param('id') id: string,
-    @Body()
-    body: {
-      url: string;
-      caption?: string;
-      position?: number;
-    },
+    @Body() dto: AddLifePhotoDto,
   ) {
-    return this.lifeService.addPhoto(id, body);
+    return this.lifeService.addPhoto(id, dto);
   }
 
   @Delete('photos/:photoId')

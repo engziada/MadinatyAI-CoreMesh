@@ -1,4 +1,3 @@
-// Trigger dev server restart after EADDRINUSE process kill - attempt 6
 import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
