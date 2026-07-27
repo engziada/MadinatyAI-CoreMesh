@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
+import axios, { type AxiosInstance } from 'axios';
+import https from 'node:https';
 
 /**
  * Shared WAHA (WhatsApp HTTP API) client utility.
@@ -16,8 +17,18 @@ import axios from 'axios';
  */
 export class WahaClient {
   protected readonly logger = new Logger(WahaClient.name);
+  private readonly http: AxiosInstance;
 
-  constructor(protected readonly config: ConfigService) {}
+  constructor(protected readonly config: ConfigService) {
+    const allowSelfSigned =
+      config.get<string>('WAHA_ALLOW_SELF_SIGNED') === 'true';
+    this.http = axios.create({
+      timeout: 10_000,
+      httpsAgent: allowSelfSigned
+        ? new https.Agent({ rejectUnauthorized: false })
+        : undefined,
+    });
+  }
 
   /** Returns true if WAHA base URL + API key are configured. */
   isAvailable(): boolean {
@@ -56,7 +67,7 @@ export class WahaClient {
     const chatId = this.toChatId(phoneNumber);
 
     try {
-      await axios.post(
+      await this.http.post(
         `${this.baseUrl}/api/sendText`,
         { session: this.session, chatId, text },
         {
@@ -64,7 +75,6 @@ export class WahaClient {
             'X-Api-Key': this.apiKey,
             'Content-Type': 'application/json',
           },
-          timeout: 10_000,
         },
       );
       return true;
