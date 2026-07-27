@@ -654,4 +654,138 @@ export class EcosystemAdminService {
 
     return { items, total, page: params.page, limit: params.limit };
   }
+
+  /**
+   * Token wallet dashboard: aggregate stats, kitchen wallets, and recent transactions.
+   */
+  async getTokensDashboard() {
+    const [totalWallets, totalBusinessTokens, totalIndividualTokens, totalTransactions] = await Promise.all([
+      this.prisma.tokenWallet.count(),
+      this.prisma.tokenWallet.aggregate({ _sum: { businessTokens: true } }),
+      this.prisma.tokenWallet.aggregate({ _sum: { individualTokens: true } }),
+      this.prisma.tokenTransaction.count(),
+    ]);
+
+    // Get kitchen businesses with their owners' wallets
+    const kitchens = await this.prisma.kitchenBusiness.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        ownerGlobalUserId: true,
+        isActive: true,
+      },
+    });
+
+    const ownerIds = kitchens.map((k) => k.ownerGlobalUserId);
+    const wallets = await this.prisma.tokenWallet.findMany({
+      where: { userId: { in: ownerIds } },
+      select: { id: true, userId: true, businessTokens: true, individualTokens: true },
+    });
+    const owners = await this.prisma.globalUser.findMany({
+      where: { id: { in: ownerIds } },
+      select: { id: true, phoneNumber: true },
+    });
+
+    const walletMap = new Map(wallets.map((w) => [w.userId, w]));
+    const ownerMap = new Map(owners.map((o) => [o.id, o]));
+
+    const kitchensWithWallets = kitchens.map((k) => ({
+      id: k.id,
+      name: k.name,
+      slug: k.slug,
+      isActive: k.isActive,
+      owner: ownerMap.get(k.ownerGlobalUserId) || null,
+      wallet: walletMap.get(k.ownerGlobalUserId) || null,
+    }));
+
+    // Recent transactions
+    const recentTransactions = await this.prisma.tokenTransaction.findMany({
+      take: 20,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Enrich transactions with wallet owner info
+    const txWalletIds = Array.from(new Set(recentTransactions.map((t) => t.walletId)));
+    const txWallets = await this.prisma.tokenWallet.findMany({
+      where: { id: { in: txWalletIds } },
+      select: { id: true, userId: true },
+    });
+    const txUserIds = txWallets.map((w) => w.userId);
+    const txUsers = await this.prisma.globalUser.findMany({
+      where: { id: { in: txUserIds } },
+      select: { id: true, phoneNumber: true },
+    });
+    const txWalletUserMap = new Map(txWallets.map((w) => [w.id, w.userId]));
+    const txUserMap = new Map(txUsers.map((u) => [u.id, u]));
+
+    const transactionsEnriched = recentTransactions.map((t) => ({
+      ...t,
+      owner: txUserMap.get(txWalletUserMap.get(t.walletId) || '') || null,
+    }));
+
+    return {
+      stats: {
+        totalTokens: (totalBusinessTokens._sum.businessTokens ?? 0) + (totalIndividualTokens._sum.individualTokens ?? 0),
+        activeKitchens: kitchensWithWallets.filter((k) => k.wallet !== null).length,
+        totalTransactions,
+      },
+      kitchens: kitchensWithWallets,
+      transactions: transactionsEnriched,
+    };
+  }
+
+  /**
+   * Admin credit/debit a kitchen's token wallet.
+   */
+  async executeTokenAction(params: {
+    kitchenId: string;
+    actionType: 'credit' | 'deduct';
+    amount: number;
+    reason?: string;
+  }) {
+    const kitchen = await this.prisma.kitchenBusiness.findUnique({
+      where: { id: params.kitchenId },
+    });
+
+    if (!kitchen) {
+      throw new NotFoundException(`Kitchen business with ID ${params.kitchenId} not found`);
+    }
+
+    // Find or create the owner's wallet
+    let wallet = await this.prisma.tokenWallet.findUnique({
+      where: { userId: kitchen.ownerGlobalUserId },
+    });
+
+    if (!wallet) {
+      wallet = await this.prisma.tokenWallet.create({
+        data: { userId: kitchen.ownerGlobalUserId },
+      });
+    }
+
+    const amount = Math.abs(params.amount);
+    const signedAmount = params.actionType === 'credit' ? amount : -amount;
+
+    // Update wallet balance and create transaction atomically
+    const [updatedWallet] = await this.prisma.$transaction([
+      this.prisma.tokenWallet.update({
+        where: { id: wallet.id },
+        data: {
+          businessTokens: { increment: signedAmount },
+        },
+      }),
+      this.prisma.tokenTransaction.create({
+        data: {
+          walletId: wallet.id,
+          activityType: 'ADMIN_ADJUSTMENT',
+          tokenType: 'business',
+          amount: signedAmount,
+          description: params.reason || `Admin ${params.actionType}`,
+        },
+      }),
+    ]);
+
+    return updatedWallet;
+  }
 }

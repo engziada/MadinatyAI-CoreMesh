@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Req, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuditAction } from '@madinatyai/gateway';
 import type { Request, Response } from 'express';
@@ -25,6 +25,7 @@ function setAuthCookie(res: Response, cookie: AuthCookieDescriptor): void {
     secure: cookie.secure,
     sameSite: cookie.sameSite,
     path: cookie.path,
+    domain: cookie.domain,
     maxAge: cookie.maxAgeSeconds * 1000,
   });
 }
@@ -87,6 +88,22 @@ export class AuthController {
   }
 
   /**
+   * Check if the authenticated user is authorized to access a specific portal.
+   * PLATFORM_ADMIN can access any portal. Other roles are checked against
+   * a portal-to-role mapping.
+   */
+  @Get('check-portal/:portal')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Check if the current user can access a portal' })
+  async checkPortal(
+    @Param('portal') portal: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ allowed: boolean; portal: string; role: string }> {
+    const allowed = await this.auth.checkPortalAccess(user.id, user.role, portal);
+    return { allowed, portal, role: user.role };
+  }
+
+  /**
    * R-11 F-16 — revoke the current token + clear the cookie.
    *
    * The JwtAuthGuard already ran (this route is auth-bound), so the JTI + exp
@@ -113,6 +130,7 @@ export class AuthController {
       secure: del.secure,
       sameSite: del.sameSite,
       path: del.path,
+      domain: del.domain,
       maxAge: 0,
     });
   }

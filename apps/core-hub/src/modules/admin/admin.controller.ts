@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Roles } from '@madinatyai/common';
 import { EcosystemAdminService } from './admin.service';
@@ -164,5 +164,21 @@ export class EcosystemAdminController {
       limit: parseInt(limit, 10),
       status,
     });
+  }
+
+  @Get('tokens/dashboard')
+  @Roles('PLATFORM_ADMIN', 'ADMIN')
+  @ApiOperation({ summary: 'Get token wallet dashboard: stats, kitchen wallets, recent transactions' })
+  getTokensDashboard() {
+    return this.adminService.getTokensDashboard();
+  }
+
+  @Post('tokens/action')
+  @Roles('PLATFORM_ADMIN', 'ADMIN')
+  @ApiOperation({ summary: 'Credit or deduct tokens from a kitchen wallet' })
+  executeTokenAction(
+    @Body() body: { kitchenId: string; actionType: 'credit' | 'deduct'; amount: number; reason?: string },
+  ) {
+    return this.adminService.executeTokenAction(body);
   }
 }

@@ -21,11 +21,12 @@ export interface AuthCookieDescriptor {
   secure: boolean;
   sameSite: 'lax' | 'strict' | 'none';
   path: string;
+  domain?: string;
 }
 
 const AUTH_COOKIE_NAME = 'madinaty.access';
-/** Path scope: cookie is sent for `/api/*` so non-API pages don't carry the JWT. */
-const AUTH_COOKIE_PATH = '/api';
+/** Path scope: cookie is sent for all paths so the FE rewrite proxy receives it. */
+const AUTH_COOKIE_PATH = '/';
 
 /**
  * Phone + OTP auth. No passwords, no email — matches GlobalUser identity
@@ -134,17 +135,21 @@ export class AuthService {
    */
   describeAuthCookie(token: string, maxAgeSeconds: number): AuthCookieDescriptor {
     const isProd = this.config.get<string>('nodeEnv') === 'production';
+    // In dev: domain=localhost so the cookie is shared across all ports (SSO).
+    // In prod: domain=.madinatyai.com so the cookie is shared across all subdomains.
+    const cookieDomain = this.config.get<string>('auth.cookieDomain')
+      ?? (isProd ? '.madinatyai.com' : 'localhost');
     return {
       name: AUTH_COOKIE_NAME,
       value: token,
       maxAgeSeconds,
       httpOnly: true,
-      // Production: SameSite=None + Secure so the FE on kanto.madinatyai.com
-      // can send the cookie to api.madinatyai.com (cross-site).
-      // Dev: SameSite=Lax (both on localhost so cross-port works without TLS).
+      // Production: SameSite=Lax + Secure (same-site subdomains, HTTPS).
+      // Dev: SameSite=Lax (localhost cross-port, no TLS needed).
       secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
+      sameSite: 'lax',
       path: AUTH_COOKIE_PATH,
+      domain: cookieDomain,
     };
   }
 
@@ -175,6 +180,42 @@ export class AuthService {
   /** Load the full /me view for an authenticated principal. */
   async me(userId: string): Promise<UserProfile> {
     return this.loadUserProfile(userId);
+  }
+
+  /**
+   * Portal access control — checks if a user can access a portal's management side.
+   *
+   * PLATFORM_ADMIN bypasses all checks.
+   * TENANT_ADMIN / PROVIDER → allowed on kitchen, express, life management.
+   * USER → only allowed on express if they have an approved ExpressCourier record.
+   *
+   * Customer-facing routes (Bas Douk ordering, Life public browsing) are handled
+   * on the FE side — they don't call this endpoint.
+   */
+  async checkPortalAccess(userId: string, role: Role, portal: string): Promise<boolean> {
+    if (role === Role.PLATFORM_ADMIN) return true;
+
+    const managementAccess: Record<string, Role[]> = {
+      admin: [Role.PLATFORM_ADMIN],
+      kitchen: [Role.TENANT_ADMIN, Role.PROVIDER],
+      express: [Role.TENANT_ADMIN, Role.PROVIDER],
+      life: [Role.TENANT_ADMIN, Role.PROVIDER],
+    };
+
+    const allowed = managementAccess[portal];
+    if (!allowed) return false;
+    if (allowed.includes(role)) return true;
+
+    // USER role: only allowed on express if they're an approved courier
+    if (role === Role.USER && portal === 'express') {
+      const courier = await this.prisma.expressCourier.findUnique({
+        where: { userId },
+        select: { status: true },
+      });
+      return courier?.status === 'APPROVED';
+    }
+
+    return false;
   }
 
   /**

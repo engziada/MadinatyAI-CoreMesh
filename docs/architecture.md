@@ -1,18 +1,21 @@
 # MadinatyAI Ecosystem Hub — Architecture & Technical Reference
 
 > **نواة مدينتي** — Multi-tenant core backend unifying the MadinatyAI ecosystem apps.
-> Last updated: May 2026 · Version 0.1.0
+> Last updated: July 2026 · Version 0.1.0
 
 ---
 
 ## 1. System Overview
 
-MadinatyAI Ecosystem Hub is a **multi-tenant API gateway** that provides shared identity, trust, KYC, AI routing, and cross-platform event infrastructure for four ecosystem applications:
+MadinatyAI Ecosystem Hub is a **multi-tenant API gateway** that provides shared identity, trust, KYC, AI routing, and cross-platform event infrastructure for the MadinatyAI ecosystem apps:
 
 | App | Subdomain | PostgreSQL Schema | Domain |
 |-----|-----------|-------------------|--------|
 | **Souq** | `souq` | `tenant_souq` | Marketplace |
 | **Kitchen** | `kitchen` | `tenant_kitchen` | Home-cooked food |
+| **Express** | `express` | `tenant_express` | Delivery / couriers |
+| **Life** | `life` | `tenant_life` | Locations, storefronts, bookings |
+| **Souk ElKanto** | `kanto` | `tenant_soukelkanto` | Pre-loved goods marketplace |
 | **Tutor** | `tutor` | `tenant_tutor` | Tutoring sessions |
 | **Time Bank** | `timebank` | `tenant_timebank` | Skill exchange |
 
@@ -390,3 +393,89 @@ Dev mode uses `ts-node-dev --respawn --transpile-only` with `tsconfig-paths/regi
 7. **tsc + tsc-alias over nest build** — Direct TypeScript compilation with alias resolution, avoiding Nest CLI abstraction layer.
 8. **DB-driven token pricing** — `ActivityPricing` table means admins can change costs without a code deploy. Closed-loop credits (not money) keep the Transparent Broker policy intact.
 9. **Row-level business sub-tenancy** — `KitchenBusiness`/`TutorBusiness` with `businessId` FK scoping avoids schema-per-business explosion while giving each business its own visual identity, subdomain, and data isolation.
+10. **HTTP-only cookie SSO over localStorage tokens** — Cross-portal auth via shared `madinaty.access` cookie (domain: `localhost` dev / `.madinatyai.com` prod) eliminates XSS token theft and enables seamless navigation between portals without re-login.
+11. **Async portal access with tenant table checks** — `checkPortalAccess()` queries tenant tables (e.g., `ExpressCourier`) to verify USER-role access, not just role enum matching. This supports the "USER + tenant assignment" pattern for couriers.
+
+---
+
+## 12. SSO & Portal Authentication
+
+### Overview
+
+All portals share a single HTTP-only cookie (`madinaty.access`) for cross-portal authentication. The cookie is set by the BE on `POST /api/v1/auth/verify-otp` and cleared on `POST /api/v1/auth/logout`.
+
+### Cookie configuration
+
+| Property | Dev | Prod |
+|----------|-----|------|
+| `Domain` | `localhost` | `.madinatyai.com` |
+| `Path` | `/` | `/` |
+| `HttpOnly` | `true` | `true` |
+| `SameSite` | `Lax` | `Lax` |
+| `Secure` | `false` | `true` |
+
+The domain is determined by `describeAuthCookie()` in `AuthService` based on `NODE_ENV`.
+
+### JWT extraction
+
+`JwtAuthGuard` extracts the JWT from (in order of preference):
+1. `madinaty.access` HTTP-only cookie
+2. `Authorization: Bearer <token>` header
+
+Both methods hydrate `request.user` (AuthenticatedUser) and `request.tokenPayload` (JwtPayload with JTI for revocation).
+
+### Portal access control
+
+`GET /api/v1/auth/check-portal/:portal` — checks if the authenticated user can access a portal's management side.
+
+`AuthService.checkPortalAccess(userId, role, portal)` is **async** and performs:
+
+1. **PLATFORM_ADMIN** → bypasses all checks, returns `true`
+2. **Role-based check** — maps roles to portals:
+   - `admin` → PLATFORM_ADMIN only
+   - `kitchen` → TENANT_ADMIN, PROVIDER
+   - `express` → TENANT_ADMIN, PROVIDER
+   - `life` → TENANT_ADMIN, PROVIDER
+3. **Tenant table check** — for USER role on `express` portal, queries `ExpressCourier` table:
+   - If `ExpressCourier.status === 'APPROVED'` → allowed
+   - Otherwise → denied
+
+### Portal auth modes (frontend)
+
+Each portal's `PortalAuthGate` component supports three modes:
+
+| Mode | Behavior | BE endpoint called |
+|------|----------|-------------------|
+| `management` | Auth + role-based portal access check | `/auth/me` + `/auth/check-portal/:portal` |
+| `customer` | Auth only (any authenticated user) | `/auth/me` only |
+| `public` | No auth check | None |
+
+### Portal access matrix
+
+| Portal | Route | Mode | Allowed roles |
+|--------|-------|------|---------------|
+| Admin | `/dashboard/*` | management | PLATFORM_ADMIN |
+| Kitchen | `/` (Bas Douk) | customer | Any authenticated user |
+| Kitchen | `/dashboard` | management | TENANT_ADMIN, PROVIDER |
+| Express | `/` | management | TENANT_ADMIN, PROVIDER, USER (if approved ExpressCourier) |
+| Life | `/` | public | No auth |
+| Life | `/dashboard` | management | TENANT_ADMIN, PROVIDER |
+
+### Business models per portal
+
+- **SoukElkanto:** Self-registration (USER role). No access to other portals.
+- **Kitchen Portal (management):** SaaS tenant model. Provider applies → admin reviews → approves → tenant activated. Tenant admin creates sub-users with predefined privileges.
+- **Bas Douk (Kitchen `/`):** Customer-facing ordering app. Self-registration, any authenticated USER can order.
+- **Express Portal:** SaaS tenant model. Couriers are USER role with an approved `ExpressCourier` record.
+- **Life Portal:** Public browsing (no auth). Management dashboard for TENANT_ADMIN/PROVIDER.
+- **Admin Portal:** PLATFORM_ADMIN only. Manages all ecosystem modules.
+
+### Key files
+
+| File | Role |
+|------|------|
+| `modules/auth/auth.service.ts` | `describeAuthCookie()`, `checkPortalAccess()` (async, tenant table queries) |
+| `modules/auth/auth.controller.ts` | `POST /auth/verify-otp` (sets cookie), `GET /auth/check-portal/:portal`, `POST /auth/logout` (clears cookie) |
+| `modules/auth/guards/jwt-auth.guard.ts` | Extracts JWT from cookie or Bearer header, JTI revocation check |
+| `modules/auth/types/authenticated-user.ts` | `AuthenticatedUser`, `UserProfile`, `JwtPayload` interfaces |
+| `{portal}/src/lib/portal-auth.tsx` | `usePortalAuth(portal, mode)` hook + `PortalAuthGate` component (in each portal) |

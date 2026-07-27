@@ -21,7 +21,6 @@ import { TenantController } from '../modules/tenant/tenant.controller';
 import { TenantItemsService } from '../modules/tenant/tenant-items.service';
 import { TokensController } from '../modules/tokens/tokens.controller';
 import { BusinessController } from '../modules/business/business.controller';
-import { KitchenPortalController } from '../modules/business/kitchen-portal.controller';
 import { SoukElKantoModule } from '../modules/soukelkanto/soukelkanto.module';
 import { AstroModule } from '../modules/astro/astro.module';
 import { AuthModule } from '../modules/auth/auth.module';
@@ -80,7 +79,6 @@ import { ExpressModule } from '../modules/express/express.module';
     TenantController,
     TokensController,
     BusinessController,
-    KitchenPortalController,
   ],
   providers: [
     TenantItemsService,
